@@ -118,6 +118,8 @@ export class WindowsHelper extends EventEmitter<HelperEvents> implements MediaPr
       console.warn(`[windows-helper] exited (${code}); restarting in ${this.backoffMs} ms`);
       this.emit('state', { active: false });
       this.emit('fullscreen', false);
+      // Don't leave the mic / camera dot on from before the crash; the restart re-reports it.
+      this.emit('privacy', { mic: [], camera: [] });
       this.restartHandle = setTimeout(() => this.spawnHelper(), this.backoffMs);
       this.backoffMs = Math.min(MAX_BACKOFF_MS, this.backoffMs * 2);
     });

@@ -35,6 +35,8 @@ const COLLAPSE_DELAY_MS = 450;
 const PAUSED_MEDIA_MS = 60_000;
 const BUBBLE_GAP = 6;
 const HIT_PADDING = 6;
+/** The pill's top edge inside the window (the stage's top padding in styles.css). */
+const STAGE_TOP = 6;
 /** With nothing happening, the island fades away after this long. */
 const IDLE_HIDE_MS = 10_000;
 /** Where the cursor brings a hidden island back: a band at the top centre of the screen. */
@@ -91,7 +93,16 @@ export function Island() {
   // Never hide while the mic or camera is in use: that dot is the point.
   const hidden = useIdleHidden(snapshot.hideWhenIdle && view === 'idle' && !privacyActive);
   const hiddenRef = useRef(hidden);
+  const shapeRef = useRef(shape);
+  shapeRef.current = shape;
   hiddenRef.current = hidden;
+
+  // A bubble the user clicked stays in front only while that activity lasts; otherwise
+  // music (whose id never changes) could jump ahead of a running timer days later.
+  const pinnedStillThere = ranked.some((a) => a.id === pinnedId);
+  useEffect(() => {
+    if (pinnedId && !pinnedStillThere) setPinnedId(null);
+  }, [pinnedId, pinnedStillThere]);
 
   // A screenshot preview stays while the cursor is on it, then leaves on its own.
   useEffect(() => {
@@ -132,10 +143,14 @@ export function Island() {
       window.island.setHitRect({ x, y: 0, ...WAKE_ZONE, passive: true });
       return;
     }
-    const rects = [pillRef.current, bubbleRef.current, privacyRef.current]
+    const rects: Pick<DOMRect, 'left' | 'top' | 'right' | 'bottom'>[] = [pillRef.current, bubbleRef.current, privacyRef.current]
       .filter((el): el is HTMLDivElement => !!el)
       .map((el) => el.getBoundingClientRect());
-    if (rects.length === 0) return;
+    // Also the pill's *target* size: while it is still fading in or growing, the clickable
+    // area must already be the final one, or a quick click falls through to the app below.
+    const target = shapeRef.current;
+    const left = (document.documentElement.clientWidth - target.width) / 2;
+    rects.push({ left, top: STAGE_TOP, right: left + target.width, bottom: STAGE_TOP + target.height });
     const x = Math.floor(Math.min(...rects.map((r) => r.left)) - HIT_PADDING);
     const y = Math.floor(Math.min(...rects.map((r) => r.top)) - HIT_PADDING);
     const right = Math.ceil(Math.max(...rects.map((r) => r.right)) + HIT_PADDING);

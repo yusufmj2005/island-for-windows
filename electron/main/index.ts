@@ -27,6 +27,8 @@ const WIN_WIDTH = 460;
 const WIN_HEIGHT = 260;
 /** How often the main process checks whether the cursor is over the island. */
 const POINTER_POLL_MS = 40;
+/** How often the island re-asserts that it sits above other always-on-top windows. */
+const RAISE_EVERY_MS = 3000;
 /** Hides or restores the island instantly, e.g. before screen sharing. The first free one wins. */
 const HIDE_SHORTCUTS = ['Control+Alt+Space', 'Control+Alt+I', 'Control+Shift+Alt+H'];
 /** Fullscreen must hold this long before the island hides or returns, to avoid flicker while switching apps. */
@@ -116,10 +118,28 @@ function setPointerInside(inside: boolean) {
   if (capture !== capturingMouse) {
     capturingMouse = capture;
     win.setIgnoreMouseEvents(!capture);
+    // Another always-on-top window (game overlay, picture-in-picture, Task Manager...)
+    // may have gone above the island since; without this its clicks would land there.
+    if (capture) raiseToTop();
   }
   if (inside === pointerInside) return;
   pointerInside = inside;
   win.webContents.send('island:pointer', inside);
+}
+
+/** While one of Island's menus is open, don't raise the island over it. */
+let menuOpen = false;
+const menuOptions = () => ({ window: win ?? undefined, callback: () => (menuOpen = false) });
+function popupMenu(menu: Electron.Menu) {
+  menuOpen = true;
+  menu.popup(menuOptions());
+}
+
+/** Puts the island back on top of the always-on-top layer, without taking focus. */
+function raiseToTop() {
+  if (!win || win.isDestroyed() || !win.isVisible() || menuOpen) return;
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.moveTop();
 }
 
 function pollPointer() {
@@ -197,7 +217,7 @@ function createTray() {
 }
 
 function showMenu() {
-  if (win) buildMenu().popup({ window: win });
+  if (win) popupMenu(buildMenu());
 }
 
 function buildMenu() {
@@ -312,12 +332,13 @@ function registerIpc() {
   ipcMain.on('island:app-menu', (_e, raw) => {
     const a = typeof raw === 'string' ? recentApps.find(raw) : undefined;
     if (!a || !win) return;
+    menuOpen = true;
     Menu.buildFromTemplate([
       { label: `Open ${a.name}`, click: () => recentApps.open(a.id) },
       { type: 'separator' },
       { label: a.pinnedAt != null ? 'Unpin' : 'Pin to front', click: () => recentApps.togglePin(a.id) },
       { label: 'Remove from list', click: () => recentApps.remove(a.id) },
-    ]).popup({ window: win });
+    ]).popup(menuOptions());
   });
   ipcMain.on('island:menu', () => showMenu());
   ipcMain.on('island:quit', () => app.quit());
@@ -399,6 +420,8 @@ app.whenReady().then(() => {
   else console.warn('[island] no hide shortcut available; all candidates are taken');
 
   setInterval(pollPointer, POINTER_POLL_MS);
+  // Keeps the island visible above other on-top windows, not just clickable on hover.
+  setInterval(raiseToTop, RAISE_EVERY_MS);
   screen.on('display-metrics-changed', positionWindow);
   screen.on('display-added', positionWindow);
   screen.on('display-removed', positionWindow);
