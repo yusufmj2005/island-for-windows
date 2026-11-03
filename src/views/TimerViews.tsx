@@ -104,7 +104,10 @@ export function TimerSetup({ onBack, onStarted }: { onBack: () => void; onStarte
     setMinutesState((m) => (lastMinutes = Math.min(MAX_MINUTES, Math.max(MIN_MINUTES, next(m)))));
   const setMinutes = (m: number) => update(() => m);
   const step = (delta: number) => update((m) => m + delta);
-  const onWheel = (e: WheelEvent) => step(e.deltaY < 0 ? 1 : -1);
+  const onWheel = (e: WheelEvent) => {
+    e.stopPropagation(); // scrolling here sets the timer, not the volume
+    step(e.deltaY < 0 ? 1 : -1);
+  };
 
   return (
     <div className="timer-setup">

@@ -37,6 +37,7 @@ To close Island: the tray icon's menu → **Quit Island**, or click the idle isl
 | Music playing | Album art + waveform tinted from the artwork; click for title, progress and controls |
 | Timer | Countdown ring + time; click for pause, cancel, +1 min |
 | Two activities | The second one splits off into a bubble; click it to swap |
+| Volume | Scroll on the island to change the system volume (2% per notch); a volume bar shows on the closed island, or a chip over the open one. Click the speaker or **middle-click** the island to mute |
 | Battery (laptops) | Plugging in the charger briefly shows **Charging 48%** with a green battery; dropping to 20% or 10% on battery shows a red **Low Battery** warning. Desktops without a battery never show it |
 | Timer finished | Alert with a chime, then "Done" until dismissed (auto-clears after a minute) |
 

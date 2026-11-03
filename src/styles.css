@@ -474,6 +474,75 @@ button {
   color: var(--text-2);
 }
 
+/* Volume bar: speaker (click to mute), bar, value. */
+.volume {
+  gap: 10px;
+  padding: 0 14px 0 8px;
+}
+
+/* Centres the chip; Framer Motion animates the wrapper's transform. */
+.volume-chip-wrap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  display: flex;
+  justify-content: center;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.volume-chip {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 220px;
+  height: 30px;
+  padding: 0 12px 0 4px;
+  border-radius: 15px;
+  background: rgba(40, 40, 42, 0.96);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.volume-speaker {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--text);
+  flex: none;
+  transition: background 0.15s;
+}
+
+.volume-speaker:hover {
+  background: var(--fill);
+}
+
+.volume-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+.volume-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--text);
+  transition: width 0.12s ease-out;
+}
+
+.volume-value {
+  min-width: 34px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Battery pill: label on the left, percentage and icon on the right. */
 .battery {
   padding: 0 14px 0 16px;

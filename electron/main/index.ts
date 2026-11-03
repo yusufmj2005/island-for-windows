@@ -11,14 +11,14 @@ import {
   Tray,
 } from 'electron';
 import path from 'node:path';
-import type { HitRect, IslandSnapshot, PowerState } from '../../src/shared/types';
+import type { HitRect, IslandSnapshot, PowerState, VolumeState } from '../../src/shared/types';
 import { installFileLog } from './log';
 import { RecentAppsService } from './RecentAppsService';
 import { Store } from './Store';
 import { TimerService } from './TimerService';
 import { WindowsHelper } from './WindowsHelper';
 import { MediaService } from './media/MediaService';
-import { parseHitRect, parseMediaCommand, parseTimerAction } from './validate';
+import { parseHitRect, parseMediaCommand, parseTimerAction, parseVolumeCommand } from './validate';
 
 // The window is a fixed transparent canvas big enough for the largest island state.
 // The island morphs inside it; the window itself never resizes.
@@ -43,6 +43,8 @@ let hitRect: HitRect | null = null;
 let pointerInside = false;
 let capturingMouse = false;
 let power: PowerState | null = null;
+let volume: VolumeState | null = null;
+let helper: WindowsHelper;
 let manuallyHidden = false;
 let fullscreenInFront = false;
 let hideShortcut: string | undefined;
@@ -67,7 +69,7 @@ function toggleHidden() {
 }
 
 function snapshot(): IslandSnapshot {
-  return { media: media.getState(), timers: timers.getTimers(), power, hideWhenIdle: store.get().settings.hideWhenIdle };
+  return { media: media.getState(), timers: timers.getTimers(), volume, power, hideWhenIdle: store.get().settings.hideWhenIdle };
 }
 
 function broadcast() {
@@ -277,6 +279,10 @@ function registerIpc() {
     const action = parseTimerAction(raw);
     if (action) timers.apply(action);
   });
+  ipcMain.on('island:volume', (_e, raw) => {
+    const cmd = parseVolumeCommand(raw);
+    if (cmd) helper.volume(cmd);
+  });
   ipcMain.handle('island:get-recent-apps', () => recentApps.list());
   // Only IDs from the list are accepted, so the renderer can never launch an arbitrary path.
   ipcMain.on('island:open-app', (_e, raw) => {
@@ -301,7 +307,7 @@ app.whenReady().then(() => {
   });
   timers.on('alert', (alert) => win?.webContents.send('island:alert', alert));
 
-  const helper = new WindowsHelper(path.join(resourceDir(), 'windows-helper.ps1'));
+  helper = new WindowsHelper(path.join(resourceDir(), 'windows-helper.ps1'));
   let fullscreenTimer: NodeJS.Timeout | undefined;
   helper.on('fullscreen', (value) => {
     clearTimeout(fullscreenTimer);
@@ -319,6 +325,10 @@ app.whenReady().then(() => {
   helper.on('start-apps', (apps) => recentApps.setStartApps(apps));
   helper.on('open-apps', (apps) => recentApps.seed(apps));
   helper.on('foreground', (seen) => recentApps.touch(seen));
+  helper.on('volume', (state) => {
+    volume = state;
+    broadcast();
+  });
   helper.on('power', (state) => {
     power = state;
     broadcast();

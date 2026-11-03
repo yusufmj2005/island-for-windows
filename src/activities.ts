@@ -30,7 +30,8 @@ export type View =
   | 'launcher'
   | 'launcher-media'
   | 'timer-setup'
-  | 'battery';
+  | 'battery'
+  | 'volume';
 
 export interface Shape {
   width: number;
@@ -51,6 +52,7 @@ export const SHAPES: Record<View, Shape> = {
   'launcher-media': { width: 384, height: 152, radius: 36 },
   'timer-setup': { width: 384, height: 148, radius: 38 },
   battery: { width: 300, height: 36, radius: 18 },
+  volume: { width: 300, height: 36, radius: 18 },
 };
 
 /** Height of the secondary bubble, which matches the compact pill. */

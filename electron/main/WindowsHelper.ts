@@ -4,7 +4,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import readline from 'node:readline';
-import type { MediaCommand, PowerState } from '../../src/shared/types';
+import type { MediaCommand, PowerState, VolumeCommand, VolumeState } from '../../src/shared/types';
 import type { MediaProvider, MediaProviderEvents } from './media/MediaProvider';
 
 const MAX_BACKOFF_MS = 30_000;
@@ -34,6 +34,8 @@ type HelperEvents = MediaProviderEvents & {
   foreground: [SeenApp];
   /** Battery presence, level or charging state changed. */
   power: [PowerState];
+  /** System volume or mute changed (from Island or anywhere else). */
+  volume: [VolumeState];
 };
 
 const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : null);
@@ -73,6 +75,10 @@ export class WindowsHelper extends EventEmitter<HelperEvents> implements MediaPr
 
   send(cmd: MediaCommand) {
     this.child?.stdin.write(`${cmd}\n`);
+  }
+
+  volume(cmd: VolumeCommand) {
+    this.child?.stdin.write(cmd.type === 'set' ? `vol-set ${cmd.level}\n` : 'mute-toggle\n');
   }
 
   private spawnHelper() {
@@ -137,6 +143,11 @@ export class WindowsHelper extends EventEmitter<HelperEvents> implements MediaPr
         break;
       case 'open-apps':
         if (Array.isArray(msg.apps)) this.emit('open-apps', msg.apps.map(toSeen).filter((a): a is SeenApp => !!a));
+        break;
+      case 'volume':
+        if (typeof msg.level === 'number') {
+          this.emit('volume', { level: Math.max(0, Math.min(100, Math.round(msg.level))), muted: msg.muted === true });
+        }
         break;
       case 'power':
         this.emit('power', {

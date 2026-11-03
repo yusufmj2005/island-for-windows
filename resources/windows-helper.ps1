@@ -2,8 +2,10 @@
 #   media / art   the current media session (GSMTC)
 #   fullscreen    whether a fullscreen app is in front on the primary display
 #   power         battery presence, percentage and charging state
+#   volume        system volume (percent) and mute state
 #   start-apps / open-apps / foreground   app usage, for "Recent apps"
-# Accepts commands on stdin, one per line: toggle | play | pause | next | prev | quit
+# Accepts commands on stdin, one per line: toggle | play | pause | next | prev |
+#   vol-set <0-100> | mute-toggle | quit
 # Exits when stdin closes, so it never outlives the app.
 
 $ErrorActionPreference = 'Stop'
@@ -63,6 +65,92 @@ public static class Power {
     if (!GetSystemPowerStatus(out s)) return null;
     bool has = (s.Flag & 128) == 0 && s.Flag != 255 && s.Percent <= 100;
     return (has ? "1" : "0") + "|" + (has ? s.Percent : 0) + "|" + (s.AC == 1 ? "1" : "0") + "|" + ((s.Flag & 8) != 0 ? "1" : "0");
+  }
+}
+"@
+
+# System volume of the default output device (Core Audio).
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class Volume {
+  [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorCom { }
+
+  [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDeviceEnumerator {
+    [PreserveSig] int EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr devices);
+    [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice device);
+  }
+
+  [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDevice {
+    [PreserveSig] int Activate(ref Guid iid, int clsCtx, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object iface);
+  }
+
+  // Methods must stay in vtable order, including the ones that aren't called.
+  [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioEndpointVolume {
+    [PreserveSig] int RegisterControlChangeNotify(IntPtr notify);
+    [PreserveSig] int UnregisterControlChangeNotify(IntPtr notify);
+    [PreserveSig] int GetChannelCount(out uint count);
+    [PreserveSig] int SetMasterVolumeLevel(float db, ref Guid ctx);
+    [PreserveSig] int SetMasterVolumeLevelScalar(float level, ref Guid ctx);
+    [PreserveSig] int GetMasterVolumeLevel(out float db);
+    [PreserveSig] int GetMasterVolumeLevelScalar(out float level);
+    [PreserveSig] int SetChannelVolumeLevel(uint channel, float db, ref Guid ctx);
+    [PreserveSig] int SetChannelVolumeLevelScalar(uint channel, float level, ref Guid ctx);
+    [PreserveSig] int GetChannelVolumeLevel(uint channel, out float db);
+    [PreserveSig] int GetChannelVolumeLevelScalar(uint channel, out float level);
+    [PreserveSig] int SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, ref Guid ctx);
+    [PreserveSig] int GetMute([MarshalAs(UnmanagedType.Bool)] out bool mute);
+  }
+
+  // Looked up on every call, so switching to headphones etc. is picked up automatically.
+  static IAudioEndpointVolume Endpoint() {
+    var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+    try {
+      IMMDevice device;
+      if (enumerator.GetDefaultAudioEndpoint(0, 1, out device) != 0 || device == null) return null; // eRender, eMultimedia
+      try {
+        var iid = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
+        object o;
+        return device.Activate(ref iid, 23, IntPtr.Zero, out o) == 0 ? (IAudioEndpointVolume)o : null; // CLSCTX_ALL
+      } finally { Marshal.ReleaseComObject(device); }
+    } finally { Marshal.ReleaseComObject(enumerator); }
+  }
+
+  /** "percent|muted", or null when there is no output device. */
+  public static string Get() {
+    var v = Endpoint();
+    if (v == null) return null;
+    try {
+      float level; bool muted;
+      v.GetMasterVolumeLevelScalar(out level);
+      v.GetMute(out muted);
+      return (int)Math.Round(level * 100) + "|" + (muted ? "1" : "0");
+    } finally { Marshal.ReleaseComObject(v); }
+  }
+
+  /** Sets the volume in percent; turning it up from mute unmutes, like the volume keys do. */
+  public static void Set(int percent) {
+    var v = Endpoint();
+    if (v == null) return;
+    try {
+      var ctx = Guid.Empty;
+      v.SetMasterVolumeLevelScalar(Math.Max(0, Math.Min(100, percent)) / 100f, ref ctx);
+      bool muted; v.GetMute(out muted);
+      if (muted && percent > 0) v.SetMute(false, ref ctx);
+    } finally { Marshal.ReleaseComObject(v); }
+  }
+
+  public static void ToggleMute() {
+    var v = Endpoint();
+    if (v == null) return;
+    try {
+      var ctx = Guid.Empty;
+      bool muted; v.GetMute(out muted);
+      v.SetMute(!muted, ref ctx);
+    } finally { Marshal.ReleaseComObject(v); }
   }
 }
 "@
@@ -272,6 +360,19 @@ Emit @{ type = 'ready' }
 function AppJson($a) { @{ path = $a.Path; aumid = $a.Aumid; name = $a.Name } }
 $lastForeground = $null
 $lastPower = $null
+$lastVolume = $null
+$volumeChanged = $false
+
+function Check-Volume {
+    try {
+        $v = [Volume]::Get()
+        if ($v -and $v -ne $script:lastVolume) {
+            $script:lastVolume = $v
+            $p = $v.Split('|')
+            Emit @{ type = 'volume'; level = [int]$p[0]; muted = ($p[1] -eq '1') }
+        }
+    } catch { }
+}
 
 # Start menu apps: display names and the IDs Windows launches them by.
 try {
@@ -285,13 +386,20 @@ try { Emit @{ type = 'open-apps'; apps = @([Apps]::OpenWindows() | ForEach-Objec
 
 while ($true) {
     # Commands from Electron (non-blocking check).
-    if ($pendingLine.IsCompleted) {
+    # Drain every waiting command. Scrolling sends many volume changes; only the last counts.
+    $volumeTarget = $null
+    $quit = $false
+    while ($pendingLine.IsCompleted) {
         $cmd = $pendingLine.Result
-        if ($null -eq $cmd -or $cmd -eq 'quit') { break }
+        if ($null -eq $cmd -or $cmd -eq 'quit') { $quit = $true; break }
+        $cmd = $cmd.Trim()
+        $pendingLine = $stdin.ReadLineAsync()
+        if ($cmd -match '^vol-set (\d{1,3})$') { $volumeTarget = [int]$Matches[1]; continue }
+        if ($cmd -eq 'mute-toggle') { try { [Volume]::ToggleMute() } catch { }; $volumeChanged = $true; continue }
         $session = $manager.GetCurrentSession()
         if ($session) {
             try {
-                $op = switch ($cmd.Trim()) {
+                $op = switch ($cmd) {
                     'toggle' { $session.TryTogglePlayPauseAsync() }
                     'play'   { $session.TryPlayAsync() }
                     'pause'  { $session.TryPauseAsync() }
@@ -301,9 +409,11 @@ while ($true) {
                 if ($op) { $null = Await $op ([bool]) }
             } catch { Emit @{ type = 'error'; message = "$_" } }
         }
-        $pendingLine = $stdin.ReadLineAsync()
-        $lastPoll = [DateTime]::MinValue   # refresh state right after a command
+        $lastPoll = [DateTime]::MinValue   # refresh media state right after a media command
     }
+    if ($quit) { break }
+    if ($null -ne $volumeTarget) { try { [Volume]::Set($volumeTarget) } catch { }; $volumeChanged = $true }
+    if ($volumeChanged) { $volumeChanged = $false; Check-Volume }
 
     if (([DateTime]::UtcNow - $lastPoll).TotalMilliseconds -ge 1000) {
         $lastPoll = [DateTime]::UtcNow
@@ -314,6 +424,7 @@ while ($true) {
                 Emit @{ type = 'fullscreen'; value = $fs }
             }
         } catch { }
+        Check-Volume   # catches changes made elsewhere, e.g. keyboard volume keys
         try {
             $power = [Power]::Status()
             if ($power -and $power -ne $lastPower) {

@@ -17,6 +17,7 @@ const api: IslandApi = {
   setHitRect: (rect) => ipcRenderer.send('island:hit-rect', rect),
   media: (cmd) => ipcRenderer.send('island:media', cmd),
   timer: (action) => ipcRenderer.send('island:timer', action),
+  volume: (cmd) => ipcRenderer.send('island:volume', cmd),
   getRecentApps: () => ipcRenderer.invoke('island:get-recent-apps'),
   onRecentApps: (cb) => subscribe('island:recent-apps', cb),
   openApp: (id) => ipcRenderer.send('island:open-app', id),

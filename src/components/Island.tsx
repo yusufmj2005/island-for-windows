@@ -5,10 +5,11 @@ import { useArtColor } from '../hooks/useArtColor';
 import { useBatteryFlash } from '../hooks/useBatteryFlash';
 import { useIsland } from '../hooks/useIsland';
 import { useNow } from '../hooks/useNow';
+import { useVolumeControl } from '../hooks/useVolumeControl';
 import { playChime } from '../lib/chime';
 import type { MediaState, RecentApp, TimerState } from '../shared/types';
 import { CompactMedia, ExpandedMedia } from '../views/MediaViews';
-import { AlertView, BatteryView, LauncherView, RECENT_APPS_HEIGHT } from '../views/OtherViews';
+import { AlertView, BatteryView, LauncherView, RECENT_APPS_HEIGHT, VolumeView } from '../views/OtherViews';
 import { CompactTimer, ExpandedTimer, TimerSetup } from '../views/TimerViews';
 import { Art, Ring } from './Bits';
 
@@ -34,6 +35,7 @@ const WAKE_ZONE = { width: 240, height: 44 };
 export function Island() {
   const { snapshot, pointerInside, alert, recentApps, dismissAlert } = useIsland();
   const { flash, dismissFlash } = useBatteryFlash(snapshot.power);
+  const vol = useVolumeControl(snapshot.volume);
   const mediaVisible = useMediaVisible(snapshot.media);
   const artColor = useArtColor(snapshot.media.artDataUrl);
   const [expanded, setExpanded] = useState(false);
@@ -56,6 +58,8 @@ export function Island() {
   if (alert) view = 'alert';
   // Charging / low battery shows briefly, but never interrupts an open island.
   else if (flash && snapshot.power && !expanded) view = 'battery';
+  // Scrolling on a closed island shows the volume bar; on an open one, a chip floats over it.
+  else if (vol.showing && !expanded) view = 'volume';
   else if (expanded && panel === 'timer-setup') view = 'timer-setup';
   else if (expanded && panel === 'media' && launcherMedia) view = 'expanded-media';
   else if (expanded && primary && panel === 'none') view = `expanded-${primary.kind}` as View;
@@ -148,7 +152,25 @@ export function Island() {
           onUpdate={reportHitRect}
           onAnimationComplete={reportHitRect}
           onClick={onPillClick}
+          onWheel={vol.onWheel}
+          // Middle-click mutes. Preventing mousedown stops Chromium's autoscroll cursor.
+          onMouseDown={(e) => e.button === 1 && e.preventDefault()}
+          onAuxClick={(e) => e.button === 1 && vol.toggleMute()}
         >
+          <AnimatePresence>
+            {expanded && vol.showing && (
+              <motion.div
+                key="volume-chip"
+                className="volume-chip-wrap"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={{ duration: 0.15 }}
+              >
+                <VolumeView level={vol.level} muted={vol.muted} onToggleMute={vol.toggleMute} compact={false} />
+              </motion.div>
+            )}
+          </AnimatePresence>
           <AnimatePresence initial={false}>
             <motion.div
               key={`${view}:${primary?.id ?? ''}:${alert?.id ?? ''}`}
@@ -161,6 +183,7 @@ export function Island() {
               {renderView(view, primary, {
                 alertView: alert ? <AlertView alert={alert} /> : null,
                 batteryView: flash && snapshot.power ? <BatteryView kind={flash} power={snapshot.power} /> : null,
+                volumeView: <VolumeView level={vol.level} muted={vol.muted} onToggleMute={vol.toggleMute} compact />,
                 artColor,
                 launcherMedia,
                 recentApps,
@@ -208,6 +231,7 @@ export function Island() {
 interface ViewOptions {
   alertView: ReactNode;
   batteryView: ReactNode;
+  volumeView: ReactNode;
   artColor: string;
   launcherMedia?: MediaState;
   recentApps: RecentApp[];
@@ -223,6 +247,7 @@ interface ViewOptions {
 function renderView(view: View, primary: Activity | null, o: ViewOptions) {
   if (view === 'alert') return o.alertView;
   if (view === 'battery') return o.batteryView;
+  if (view === 'volume') return o.volumeView;
   if (view === 'launcher' || view === 'launcher-media') {
     return (
       <LauncherView

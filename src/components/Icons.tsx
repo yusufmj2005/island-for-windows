@@ -76,6 +76,21 @@ export const ChevronLeftIcon = ({ size = 14, color = 'currentColor' }: P) => (
   </svg>
 );
 
+/** Speaker with 0-2 sound waves depending on the level, or a cross when muted. */
+export const SpeakerIcon = ({ level, muted, size = 18 }: { level: number; muted: boolean; size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4Z" fill="currentColor" />
+    {muted || level === 0 ? (
+      <path d="M16 9.5l5 5M21 9.5l-5 5" />
+    ) : (
+      <>
+        <path d="M15.5 9.2a4 4 0 0 1 0 5.6" />
+        {level > 50 && <path d="M18.3 6.6a7.6 7.6 0 0 1 0 10.8" />}
+      </>
+    )}
+  </svg>
+);
+
 /** Horizontal battery with its fill level; a bolt is drawn over it while charging. */
 export const BatteryIcon = ({ percent, color, charging }: { percent: number; color: string; charging: boolean }) => {
   const fill = Math.max(2, (Math.min(100, percent) / 100) * 21);

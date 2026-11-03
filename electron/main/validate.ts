@@ -1,5 +1,5 @@
 // Validation for every payload that crosses the IPC boundary from the renderer.
-import type { HitRect, MediaCommand, TimerAction } from '../../src/shared/types';
+import type { HitRect, MediaCommand, TimerAction, VolumeCommand } from '../../src/shared/types';
 
 const MEDIA_COMMANDS: readonly string[] = ['toggle', 'play', 'pause', 'next', 'prev'];
 const MAX_TIMER_MS = 24 * 60 * 60 * 1000;
@@ -11,6 +11,13 @@ const isNum = (v: unknown, min: number, max: number): v is number =>
 
 export function parseMediaCommand(v: unknown): MediaCommand | null {
   return typeof v === 'string' && MEDIA_COMMANDS.includes(v) ? (v as MediaCommand) : null;
+}
+
+export function parseVolumeCommand(v: unknown): VolumeCommand | null {
+  if (!isObj(v)) return null;
+  if (v.type === 'toggle-mute') return { type: 'toggle-mute' };
+  if (v.type === 'set' && isNum(v.level, 0, 100)) return { type: 'set', level: Math.round(v.level) };
+  return null;
 }
 
 export function parseHitRect(v: unknown): HitRect | null {

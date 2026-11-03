@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { TIMER_COLOR } from '../activities';
 import { BackChip } from '../components/Bits';
-import { BatteryIcon, BellIcon, ChevronRightIcon, PowerIcon, TimerIcon } from '../components/Icons';
+import { BatteryIcon, BellIcon, ChevronRightIcon, PowerIcon, SpeakerIcon, TimerIcon } from '../components/Icons';
 import type { BatteryFlash } from '../hooks/useBatteryFlash';
 import type { IslandAlert, MediaState, PowerState, RecentApp } from '../shared/types';
 import { MiniMedia } from './MediaViews';
@@ -22,6 +22,32 @@ export function AlertView({ alert }: { alert: IslandAlert }) {
         <div className="title">{alert.title}</div>
         {alert.subtitle && <div className="subtitle">{alert.subtitle}</div>}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Volume bar. `compact` is the pill shown on a closed island; otherwise it's a small chip
+ * floating over an open island. Clicking the speaker mutes or unmutes.
+ */
+export function VolumeView({ level, muted, onToggleMute, compact }: { level: number; muted: boolean; onToggleMute: () => void; compact: boolean }) {
+  return (
+    <div className={compact ? 'row compact volume' : 'volume-chip'}>
+      <button
+        className="volume-speaker"
+        title={muted ? 'Unmute' : 'Mute'}
+        aria-label={muted ? 'Unmute' : 'Mute'}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleMute();
+        }}
+      >
+        <SpeakerIcon level={level} muted={muted} />
+      </button>
+      <div className="volume-bar">
+        <div className="volume-fill" style={{ width: `${muted ? 0 : level}%` }} />
+      </div>
+      <span className="volume-value">{muted ? 'Muted' : level}</span>
     </div>
   );
 }

@@ -39,9 +39,19 @@ export interface PowerState {
   charging: boolean;
 }
 
+export interface VolumeState {
+  /** 0-100. */
+  level: number;
+  muted: boolean;
+}
+
+export type VolumeCommand = { type: 'set'; level: number } | { type: 'toggle-mute' };
+
 export interface IslandSnapshot {
   media: MediaState;
   timers: TimerState[];
+  /** System volume of the default output device; null until reported or with no device. */
+  volume: VolumeState | null;
   /** Null until Windows has reported it. */
   power: PowerState | null;
   /** Setting: fade the island away after 10 s with nothing happening. */
@@ -88,6 +98,7 @@ export interface IslandApi {
   setHitRect(rect: HitRect | null): void;
   media(cmd: MediaCommand): void;
   timer(action: TimerAction): void;
+  volume(cmd: VolumeCommand): void;
   getRecentApps(): Promise<RecentApp[]>;
   onRecentApps(cb: (apps: RecentApp[]) => void): () => void;
   openApp(id: string): void;
