@@ -1,0 +1,353 @@
+import {
+  app,
+  BrowserWindow,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  nativeImage,
+  powerMonitor,
+  screen,
+  shell,
+  Tray,
+} from 'electron';
+import path from 'node:path';
+import type { HitRect, IslandSnapshot } from '../../src/shared/types';
+import { installFileLog } from './log';
+import { RecentAppsService } from './RecentAppsService';
+import { Store } from './Store';
+import { TimerService } from './TimerService';
+import { WindowsHelper } from './WindowsHelper';
+import { MediaService } from './media/MediaService';
+import { parseHitRect, parseMediaCommand, parseTimerAction } from './validate';
+
+// The window is a fixed transparent canvas big enough for the largest island state.
+// The island morphs inside it; the window itself never resizes.
+const WIN_WIDTH = 460;
+const WIN_HEIGHT = 260;
+/** How often the main process checks whether the cursor is over the island. */
+const POINTER_POLL_MS = 40;
+/** Hides or restores the island instantly, e.g. before screen sharing. The first free one wins. */
+const HIDE_SHORTCUTS = ['Control+Alt+Space', 'Control+Alt+I', 'Control+Shift+Alt+H'];
+/** Fullscreen must hold this long before the island hides or returns, to avoid flicker while switching apps. */
+const FULLSCREEN_DEBOUNCE_MS = 400;
+
+if (!app.requestSingleInstanceLock()) app.quit();
+
+let win: BrowserWindow | null = null;
+let store: Store;
+let timers: TimerService;
+let recentApps: RecentAppsService;
+let media: MediaService;
+
+let hitRect: HitRect | null = null;
+let pointerInside = false;
+let capturingMouse = false;
+let manuallyHidden = false;
+let fullscreenInFront = false;
+let hideShortcut: string | undefined;
+let tray: Tray | null = null;
+
+/** Shows or hides the window. Hiding never stops timers or the media helper. */
+function applyVisibility() {
+  if (!win) return;
+  const hide = manuallyHidden || (fullscreenInFront && store.get().settings.autoHideFullscreen);
+  if (hide && win.isVisible()) {
+    setPointerInside(false);
+    win.hide();
+  } else if (!hide && !win.isVisible()) {
+    win.showInactive();
+    win.setAlwaysOnTop(true, 'screen-saver');
+  }
+}
+
+function toggleHidden() {
+  manuallyHidden = !manuallyHidden;
+  applyVisibility();
+}
+
+function snapshot(): IslandSnapshot {
+  return { media: media.getState(), timers: timers.getTimers(), hideWhenIdle: store.get().settings.hideWhenIdle };
+}
+
+function broadcast() {
+  if (win && !win.isDestroyed()) win.webContents.send('island:snapshot', snapshot());
+}
+
+function positionWindow() {
+  if (!win) return;
+  const display = screen.getPrimaryDisplay();
+  const { offsetX, offsetY } = store.get().settings;
+  win.setBounds({
+    x: Math.round(display.workArea.x + (display.workArea.width - WIN_WIDTH) / 2 + offsetX),
+    y: display.bounds.y + offsetY,
+    width: WIN_WIDTH,
+    height: WIN_HEIGHT,
+  });
+}
+
+/**
+ * Click-through: the window ignores the mouse except while the cursor is over the
+ * island. The main process polls the cursor position itself rather than trusting
+ * renderer enter/leave events, so a missed event can never leave the window stuck
+ * blocking clicks to the apps underneath.
+ *
+ * Mouse forwarding ({ forward: true }) is deliberately not used: on Windows, once the
+ * cursor has crossed the transparent area with forwarding on, Chromium stops
+ * receiving clicks on the island. The polling above makes forwarding unnecessary.
+ */
+function setPointerInside(inside: boolean) {
+  if (!win) return;
+  // A passive rect (the hidden island's wake zone) only reports the cursor; clicks
+  // still go to the apps underneath.
+  const capture = inside && !hitRect?.passive;
+  if (capture !== capturingMouse) {
+    capturingMouse = capture;
+    win.setIgnoreMouseEvents(!capture);
+  }
+  if (inside === pointerInside) return;
+  pointerInside = inside;
+  win.webContents.send('island:pointer', inside);
+}
+
+function pollPointer() {
+  if (!win || win.isDestroyed() || !win.isVisible() || !hitRect) {
+    setPointerInside(false);
+    return;
+  }
+  const p = screen.getCursorScreenPoint();
+  const b = win.getBounds();
+  const x = p.x - b.x;
+  const y = p.y - b.y;
+  setPointerInside(x >= hitRect.x && x < hitRect.x + hitRect.width && y >= hitRect.y && y < hitRect.y + hitRect.height);
+}
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: WIN_WIDTH,
+    height: WIN_HEIGHT,
+    transparent: true,
+    backgroundColor: '#00000000',
+    frame: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    // Clicking the island should not steal focus from the app you're using.
+    focusable: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      autoplayPolicy: 'no-user-gesture-required',
+      backgroundThrottling: false,
+    },
+  });
+
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setIgnoreMouseEvents(true);
+  positionWindow();
+
+  // Never navigate away or open new windows.
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
+  const devUrl = process.env.ISLAND_DEV_URL;
+  if (devUrl) win.loadURL(devUrl);
+  else win.loadFile(path.join(__dirname, '../dist/index.html'));
+
+  win.once('ready-to-show', () => {
+    win?.showInactive();
+    applyVisibility();
+  });
+  win.on('closed', () => {
+    win = null;
+  });
+}
+
+/** Folder holding the helper script and tray icons, in dev and when packaged. */
+const resourceDir = () => (app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'resources'));
+
+/**
+ * Tray icon in the notification area: always there, even while the island is hidden,
+ * so the app can be shown, hidden or quit at any time.
+ */
+function createTray() {
+  tray = new Tray(nativeImage.createFromPath(path.join(resourceDir(), 'tray.png')));
+  tray.setToolTip('Island');
+  tray.on('click', toggleHidden);
+  tray.on('right-click', () => tray?.popUpContextMenu(buildMenu()));
+}
+
+function showMenu() {
+  if (win) buildMenu().popup({ window: win });
+}
+
+function buildMenu() {
+  const settings = store.get().settings;
+  const nudge = (dx: number) => {
+    store.updateSettings({ offsetX: store.get().settings.offsetX + dx });
+    positionWindow();
+  };
+  return Menu.buildFromTemplate([
+    {
+      label: manuallyHidden ? 'Show island' : 'Hide island',
+      accelerator: hideShortcut,
+      registerAccelerator: false,
+      click: toggleHidden,
+    },
+    { type: 'separator' },
+    { label: 'Start 5 min timer', click: () => timers.apply({ type: 'start', durationMs: 5 * 60_000 }) },
+    { type: 'separator' },
+    {
+      label: 'Position',
+      submenu: [
+        { label: 'Nudge left', click: () => nudge(-10) },
+        { label: 'Nudge right', click: () => nudge(10) },
+        {
+          label: 'Lower by 4 px',
+          click: () => {
+            store.updateSettings({ offsetY: Math.min(40, settings.offsetY + 4) });
+            positionWindow();
+          },
+        },
+        {
+          label: 'Reset position',
+          click: () => {
+            store.updateSettings({ offsetX: 0, offsetY: 0 });
+            positionWindow();
+          },
+        },
+      ],
+    },
+    {
+      label: 'Hide when idle (10 s)',
+      type: 'checkbox',
+      checked: settings.hideWhenIdle,
+      click: (item) => {
+        store.updateSettings({ hideWhenIdle: item.checked });
+        broadcast();
+      },
+    },
+    {
+      label: 'Hide in fullscreen apps',
+      type: 'checkbox',
+      checked: settings.autoHideFullscreen,
+      click: (item) => {
+        store.updateSettings({ autoHideFullscreen: item.checked });
+        applyVisibility();
+      },
+    },
+    {
+      label: 'Open at login',
+      type: 'checkbox',
+      checked: settings.openAtLogin,
+      click: (item) => {
+        store.updateSettings({ openAtLogin: item.checked });
+        // Unpackaged, Electron must be told which app to run, like the shortcuts do.
+        app.setLoginItemSettings(
+          app.isPackaged
+            ? { openAtLogin: item.checked }
+            : { openAtLogin: item.checked, path: process.execPath, args: [app.getAppPath()] },
+        );
+      },
+    },
+    { type: 'separator' },
+    { label: 'Open diagnostics log', click: () => shell.openPath(logFile()) },
+    { label: 'Quit Island', click: () => app.quit() },
+  ]);
+}
+
+function registerIpc() {
+  ipcMain.handle('island:get-snapshot', () => snapshot());
+  ipcMain.on('island:hit-rect', (_e, raw) => {
+    hitRect = raw === null ? null : parseHitRect(raw);
+    pollPointer();
+  });
+  ipcMain.on('island:media', (_e, raw) => {
+    const cmd = parseMediaCommand(raw);
+    if (cmd) media.command(cmd);
+  });
+  ipcMain.on('island:timer', (_e, raw) => {
+    const action = parseTimerAction(raw);
+    if (action) timers.apply(action);
+  });
+  ipcMain.handle('island:get-recent-apps', () => recentApps.list());
+  // Only IDs from the list are accepted, so the renderer can never launch an arbitrary path.
+  ipcMain.on('island:open-app', (_e, raw) => {
+    if (typeof raw === 'string' && raw.length < 1024) recentApps.open(raw);
+  });
+  ipcMain.on('island:menu', () => showMenu());
+  ipcMain.on('island:quit', () => app.quit());
+}
+
+const logFile = () => path.join(app.getPath('userData'), 'island.log');
+
+app.whenReady().then(() => {
+  installFileLog(logFile());
+  console.log(`[island] starting v${app.getVersion()} (Electron ${process.versions.electron})`);
+  store = new Store(path.join(app.getPath('userData'), 'island-state.json'));
+  const saved = store.get();
+
+  timers = new TimerService(saved.timers);
+  timers.on('change', () => {
+    store.update({ timers: timers.getTimers() });
+    broadcast();
+  });
+  timers.on('alert', (alert) => win?.webContents.send('island:alert', alert));
+
+  const helper = new WindowsHelper(path.join(resourceDir(), 'windows-helper.ps1'));
+  let fullscreenTimer: NodeJS.Timeout | undefined;
+  helper.on('fullscreen', (value) => {
+    clearTimeout(fullscreenTimer);
+    fullscreenTimer = setTimeout(() => {
+      if (value === fullscreenInFront) return;
+      console.log(`[island] fullscreen app in front: ${value}`);
+      fullscreenInFront = value;
+      applyVisibility();
+    }, FULLSCREEN_DEBOUNCE_MS);
+  });
+  media = new MediaService(helper);
+  media.on('change', broadcast);
+
+  recentApps = new RecentAppsService(saved.recentApps, process.execPath);
+  helper.on('start-apps', (apps) => recentApps.setStartApps(apps));
+  helper.on('open-apps', (apps) => recentApps.seed(apps));
+  helper.on('foreground', (seen) => recentApps.touch(seen));
+  recentApps.on('change', async () => {
+    store.update({ recentApps: recentApps.getStored() });
+    const list = await recentApps.list();
+    if (win && !win.isDestroyed()) win.webContents.send('island:recent-apps', list);
+  });
+
+  registerIpc();
+  createWindow();
+  createTray();
+  media.start();
+
+  hideShortcut = HIDE_SHORTCUTS.find((s) => globalShortcut.register(s, toggleHidden));
+  if (hideShortcut) console.log(`[island] hide shortcut: ${hideShortcut}`);
+  else console.warn('[island] no hide shortcut available; all candidates are taken');
+
+  setInterval(pollPointer, POINTER_POLL_MS);
+  screen.on('display-metrics-changed', positionWindow);
+  screen.on('display-added', positionWindow);
+  screen.on('display-removed', positionWindow);
+  powerMonitor.on('resume', () => timers.reconcile(true));
+});
+
+app.on('second-instance', () => {
+  manuallyHidden = false;
+  applyVisibility();
+});
+app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('before-quit', () => {
+  media?.stop();
+  timers?.dispose();
+  store?.flush();
+});
+app.on('window-all-closed', () => app.quit());
