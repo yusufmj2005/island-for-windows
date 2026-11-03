@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { IslandAlert, IslandSnapshot, RecentApp } from '../shared/types';
 
-const EMPTY: IslandSnapshot = { media: { active: false }, timers: [], hideWhenIdle: false };
+const EMPTY: IslandSnapshot = { media: { active: false }, timers: [], power: null, hideWhenIdle: false };
 const ALERT_MS = 4500;
 
 /** Live state pushed from the main process. */

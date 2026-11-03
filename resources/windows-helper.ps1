@@ -1,6 +1,8 @@
 # Windows helper for Island. Runs in Windows PowerShell 5.1 and streams JSON lines on stdout:
 #   media / art   the current media session (GSMTC)
 #   fullscreen    whether a fullscreen app is in front on the primary display
+#   power         battery presence, percentage and charging state
+#   start-apps / open-apps / foreground   app usage, for "Recent apps"
 # Accepts commands on stdin, one per line: toggle | play | pause | next | prev | quit
 # Exits when stdin closes, so it never outlives the app.
 
@@ -43,6 +45,24 @@ public static class Foreground {
     RECT r;
     if (!GetWindowRect(h, out r)) return false;
     return r.L <= mi.rcMonitor.L && r.T <= mi.rcMonitor.T && r.R >= mi.rcMonitor.R && r.B >= mi.rcMonitor.B;
+  }
+}
+"@
+
+# Battery state, straight from Windows (desktops report "no system battery").
+Add-Type @"
+using System.Runtime.InteropServices;
+public static class Power {
+  [StructLayout(LayoutKind.Sequential)]
+  struct SYSTEM_POWER_STATUS { public byte AC; public byte Flag; public byte Percent; public byte Saver; public int Life; public int FullLife; }
+  [DllImport("kernel32.dll")] static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS s);
+
+  /** "hasBattery|percent|pluggedIn|charging", or null if Windows can't say. */
+  public static string Status() {
+    SYSTEM_POWER_STATUS s;
+    if (!GetSystemPowerStatus(out s)) return null;
+    bool has = (s.Flag & 128) == 0 && s.Flag != 255 && s.Percent <= 100;
+    return (has ? "1" : "0") + "|" + (has ? s.Percent : 0) + "|" + (s.AC == 1 ? "1" : "0") + "|" + ((s.Flag & 8) != 0 ? "1" : "0");
   }
 }
 "@
@@ -251,6 +271,7 @@ Emit @{ type = 'ready' }
 
 function AppJson($a) { @{ path = $a.Path; aumid = $a.Aumid; name = $a.Name } }
 $lastForeground = $null
+$lastPower = $null
 
 # Start menu apps: display names and the IDs Windows launches them by.
 try {
@@ -291,6 +312,14 @@ while ($true) {
             if ($fs -ne $lastFullscreen) {
                 $lastFullscreen = $fs
                 Emit @{ type = 'fullscreen'; value = $fs }
+            }
+        } catch { }
+        try {
+            $power = [Power]::Status()
+            if ($power -and $power -ne $lastPower) {
+                $lastPower = $power
+                $p = $power.Split('|')
+                Emit @{ type = 'power'; hasBattery = ($p[0] -eq '1'); percent = [int]$p[1]; pluggedIn = ($p[2] -eq '1'); charging = ($p[3] -eq '1') }
             }
         } catch { }
         try {

@@ -474,6 +474,26 @@ button {
   color: var(--text-2);
 }
 
+/* Battery pill: label on the left, percentage and icon on the right. */
+.battery {
+  padding: 0 14px 0 16px;
+}
+
+.battery-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.battery-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
 /* Recent apps: one horizontal row of icons. */
 .apps-row {
   display: flex;

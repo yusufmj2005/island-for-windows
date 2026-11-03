@@ -11,7 +11,7 @@ import {
   Tray,
 } from 'electron';
 import path from 'node:path';
-import type { HitRect, IslandSnapshot } from '../../src/shared/types';
+import type { HitRect, IslandSnapshot, PowerState } from '../../src/shared/types';
 import { installFileLog } from './log';
 import { RecentAppsService } from './RecentAppsService';
 import { Store } from './Store';
@@ -42,6 +42,7 @@ let media: MediaService;
 let hitRect: HitRect | null = null;
 let pointerInside = false;
 let capturingMouse = false;
+let power: PowerState | null = null;
 let manuallyHidden = false;
 let fullscreenInFront = false;
 let hideShortcut: string | undefined;
@@ -66,7 +67,7 @@ function toggleHidden() {
 }
 
 function snapshot(): IslandSnapshot {
-  return { media: media.getState(), timers: timers.getTimers(), hideWhenIdle: store.get().settings.hideWhenIdle };
+  return { media: media.getState(), timers: timers.getTimers(), power, hideWhenIdle: store.get().settings.hideWhenIdle };
 }
 
 function broadcast() {
@@ -318,6 +319,10 @@ app.whenReady().then(() => {
   helper.on('start-apps', (apps) => recentApps.setStartApps(apps));
   helper.on('open-apps', (apps) => recentApps.seed(apps));
   helper.on('foreground', (seen) => recentApps.touch(seen));
+  helper.on('power', (state) => {
+    power = state;
+    broadcast();
+  });
   recentApps.on('change', async () => {
     store.update({ recentApps: recentApps.getStored() });
     const list = await recentApps.list();

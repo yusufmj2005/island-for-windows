@@ -31,9 +31,19 @@ export interface TimerState {
   completedAt?: number;
 }
 
+export interface PowerState {
+  /** False on desktops; nothing battery-related is shown then. */
+  hasBattery: boolean;
+  percent: number;
+  pluggedIn: boolean;
+  charging: boolean;
+}
+
 export interface IslandSnapshot {
   media: MediaState;
   timers: TimerState[];
+  /** Null until Windows has reported it. */
+  power: PowerState | null;
   /** Setting: fade the island away after 10 s with nothing happening. */
   hideWhenIdle: boolean;
 }

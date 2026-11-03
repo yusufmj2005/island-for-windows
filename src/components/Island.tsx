@@ -2,12 +2,13 @@ import { AnimatePresence, motion, type Transition } from 'framer-motion';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { BUBBLE_SIZE, rankActivities, remainingMs, SHAPES, TIMER_COLOR, type Activity, type View } from '../activities';
 import { useArtColor } from '../hooks/useArtColor';
+import { useBatteryFlash } from '../hooks/useBatteryFlash';
 import { useIsland } from '../hooks/useIsland';
 import { useNow } from '../hooks/useNow';
 import { playChime } from '../lib/chime';
 import type { MediaState, RecentApp, TimerState } from '../shared/types';
 import { CompactMedia, ExpandedMedia } from '../views/MediaViews';
-import { AlertView, LauncherView, RECENT_APPS_HEIGHT } from '../views/OtherViews';
+import { AlertView, BatteryView, LauncherView, RECENT_APPS_HEIGHT } from '../views/OtherViews';
 import { CompactTimer, ExpandedTimer, TimerSetup } from '../views/TimerViews';
 import { Art, Ring } from './Bits';
 
@@ -32,6 +33,7 @@ const WAKE_ZONE = { width: 240, height: 44 };
 
 export function Island() {
   const { snapshot, pointerInside, alert, recentApps, dismissAlert } = useIsland();
+  const { flash, dismissFlash } = useBatteryFlash(snapshot.power);
   const mediaVisible = useMediaVisible(snapshot.media);
   const artColor = useArtColor(snapshot.media.artDataUrl);
   const [expanded, setExpanded] = useState(false);
@@ -52,6 +54,8 @@ export function Island() {
 
   let view: View;
   if (alert) view = 'alert';
+  // Charging / low battery shows briefly, but never interrupts an open island.
+  else if (flash && snapshot.power && !expanded) view = 'battery';
   else if (expanded && panel === 'timer-setup') view = 'timer-setup';
   else if (expanded && panel === 'media' && launcherMedia) view = 'expanded-media';
   else if (expanded && primary && panel === 'none') view = `expanded-${primary.kind}` as View;
@@ -121,6 +125,7 @@ export function Island() {
     }
     // Clicking only ever opens the island; it closes when the cursor leaves. Clicking an
     // open island to close it looked like "the island won't open" to a real user.
+    dismissFlash();
     setExpanded(true);
   };
 
@@ -155,6 +160,7 @@ export function Island() {
             >
               {renderView(view, primary, {
                 alertView: alert ? <AlertView alert={alert} /> : null,
+                batteryView: flash && snapshot.power ? <BatteryView kind={flash} power={snapshot.power} /> : null,
                 artColor,
                 launcherMedia,
                 recentApps,
@@ -201,6 +207,7 @@ export function Island() {
 
 interface ViewOptions {
   alertView: ReactNode;
+  batteryView: ReactNode;
   artColor: string;
   launcherMedia?: MediaState;
   recentApps: RecentApp[];
@@ -215,6 +222,7 @@ interface ViewOptions {
 
 function renderView(view: View, primary: Activity | null, o: ViewOptions) {
   if (view === 'alert') return o.alertView;
+  if (view === 'battery') return o.batteryView;
   if (view === 'launcher' || view === 'launcher-media') {
     return (
       <LauncherView

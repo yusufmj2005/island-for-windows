@@ -4,7 +4,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import readline from 'node:readline';
-import type { MediaCommand } from '../../src/shared/types';
+import type { MediaCommand, PowerState } from '../../src/shared/types';
 import type { MediaProvider, MediaProviderEvents } from './media/MediaProvider';
 
 const MAX_BACKOFF_MS = 30_000;
@@ -32,6 +32,8 @@ type HelperEvents = MediaProviderEvents & {
   'open-apps': [SeenApp[]];
   /** The app in front changed. */
   foreground: [SeenApp];
+  /** Battery presence, level or charging state changed. */
+  power: [PowerState];
 };
 
 const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : null);
@@ -135,6 +137,14 @@ export class WindowsHelper extends EventEmitter<HelperEvents> implements MediaPr
         break;
       case 'open-apps':
         if (Array.isArray(msg.apps)) this.emit('open-apps', msg.apps.map(toSeen).filter((a): a is SeenApp => !!a));
+        break;
+      case 'power':
+        this.emit('power', {
+          hasBattery: msg.hasBattery === true,
+          percent: typeof msg.percent === 'number' ? Math.max(0, Math.min(100, msg.percent)) : 0,
+          pluggedIn: msg.pluggedIn === true,
+          charging: msg.charging === true,
+        });
         break;
       case 'foreground': {
         const app = toSeen(msg.app);

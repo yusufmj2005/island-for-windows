@@ -76,7 +76,20 @@ export const ChevronLeftIcon = ({ size = 14, color = 'currentColor' }: P) => (
   </svg>
 );
 
-export const ChevronRightIcon = ({ size = 14, color = 'currentColor' }: P) => (
+/** Horizontal battery with its fill level; a bolt is drawn over it while charging. */
+export const BatteryIcon = ({ percent, color, charging }: { percent: number; color: string; charging: boolean }) => {
+  const fill = Math.max(2, (Math.min(100, percent) / 100) * 21);
+  return (
+    <svg width={30} height={14} viewBox="0 0 30 14">
+      <rect x="0.75" y="0.75" width="25" height="12.5" rx="3.6" fill="none" stroke="currentColor" strokeOpacity="0.45" strokeWidth="1.5" />
+      <rect x="27.2" y="4.5" width="1.8" height="5" rx="0.9" fill="currentColor" fillOpacity="0.45" />
+      <rect x="2.5" y="2.5" width={fill} height="9" rx="2.2" fill={color} />
+      {charging && <path d="M14.6 1.8 9.6 7.6h3.6l-1.2 4.6 5-5.8h-3.6Z" fill="#fff" stroke="#000" strokeWidth="0.8" strokeLinejoin="round" />}
+    </svg>
+  );
+};
+
+export const ChevronRightIcon =({ size = 14, color = 'currentColor' }: P) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 5l7 7-7 7" />
   </svg>

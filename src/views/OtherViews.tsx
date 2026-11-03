@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { TIMER_COLOR } from '../activities';
 import { BackChip } from '../components/Bits';
-import { BellIcon, ChevronRightIcon, PowerIcon, TimerIcon } from '../components/Icons';
-import type { IslandAlert, MediaState, RecentApp } from '../shared/types';
+import { BatteryIcon, BellIcon, ChevronRightIcon, PowerIcon, TimerIcon } from '../components/Icons';
+import type { BatteryFlash } from '../hooks/useBatteryFlash';
+import type { IslandAlert, MediaState, PowerState, RecentApp } from '../shared/types';
 import { MiniMedia } from './MediaViews';
 
 /** How many recent apps fit in the launcher's row. */
@@ -21,6 +22,25 @@ export function AlertView({ alert }: { alert: IslandAlert }) {
         <div className="title">{alert.title}</div>
         {alert.subtitle && <div className="subtitle">{alert.subtitle}</div>}
       </div>
+    </div>
+  );
+}
+
+const BATTERY_GREEN = '#32d74b';
+const BATTERY_RED = '#ff453a';
+
+/** The wide pill shown briefly when a charger is plugged in or the battery runs low. */
+export function BatteryView({ kind, power }: { kind: BatteryFlash; power: PowerState }) {
+  const charging = kind === 'charging';
+  const color = charging ? BATTERY_GREEN : BATTERY_RED;
+  const label = !charging ? 'Low Battery' : power.charging ? 'Charging' : 'Plugged in';
+  return (
+    <div className="row compact battery">
+      <span className="battery-label" style={{ color: charging ? 'var(--text)' : color }}>{label}</span>
+      <span className="battery-level">
+        <span style={{ color }}>{power.percent}%</span>
+        <BatteryIcon percent={power.percent} color={color} charging={power.charging} />
+      </span>
     </div>
   );
 }
