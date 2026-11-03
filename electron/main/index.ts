@@ -149,6 +149,29 @@ function popupMenu(menu: Electron.Menu) {
   menu.popup(menuOptions());
 }
 
+const WM_MOUSEACTIVATE = 0x0021;
+const PRESS_MESSAGES: Record<number, 'left' | 'right' | 'middle'> = { 0x0201: 'left', 0x0204: 'right', 0x0207: 'middle' };
+
+/**
+ * The island never takes focus (focusable: false), so it doesn't steal it from the app
+ * you're using. But when you click a window that isn't active, Windows first sends it
+ * WM_MOUSEACTIVATE, and Chromium answers "don't activate, and discard this click"
+ * (MA_NOACTIVATEANDEAT) for windows that can't be focused: the press is dropped and
+ * only the release reaches the page, so nothing on the island responds.
+ * Windows still tells us about each such click, so put the press back ourselves.
+ */
+function restoreSwallowedPresses(w: BrowserWindow) {
+  w.hookWindowMessage(WM_MOUSEACTIVATE, (_wParam, lParam) => {
+    if (w.isDestroyed() || w.isFocusable()) return; // focusable windows get their press normally
+    // lParam: low word = hit-test code, high word = the mouse message that caused it.
+    const button = PRESS_MESSAGES[lParam.readUInt16LE(2)];
+    if (!button) return;
+    const p = screen.getCursorScreenPoint();
+    const b = w.getBounds();
+    w.webContents.sendInputEvent({ type: 'mouseDown', x: p.x - b.x, y: p.y - b.y, button, clickCount: 1 });
+  });
+}
+
 /** Puts the island back on top of the always-on-top layer, without taking focus. */
 function raiseToTop() {
   if (!win || win.isDestroyed() || !win.isVisible() || menuOpen) return;
@@ -198,6 +221,7 @@ function createWindow() {
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setIgnoreMouseEvents(true);
   positionWindow();
+  restoreSwallowedPresses(win);
 
   // Never navigate away or open new windows.
   win.webContents.on('will-navigate', (e) => e.preventDefault());
