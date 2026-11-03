@@ -256,6 +256,146 @@ button {
   border-radius: 3px;
 }
 
+/* Seekable: a taller hit area, and the bar thickens with a knob on hover or while dragging. */
+.bar.seekable {
+  position: relative;
+  overflow: visible;
+  cursor: pointer;
+  background-clip: content-box;
+  padding: 6px 0;
+  margin: -6px 0;
+  touch-action: none;
+}
+
+.bar.seekable .fill {
+  transition: height 0.12s;
+}
+
+.bar.seekable:hover,
+.bar.seekable.dragging {
+  height: 8px;
+}
+
+.bar .knob {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.12s, transform 0.12s;
+  pointer-events: none;
+}
+
+.bar.seekable:hover .knob,
+.bar.dragging .knob {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Album art opens the playing app. */
+.art-btn {
+  flex: none;
+  border-radius: 13px;
+  transition: transform 0.12s, filter 0.15s;
+}
+
+.art-btn:hover {
+  filter: brightness(1.1);
+  transform: scale(1.04);
+}
+
+.art-btn:active {
+  transform: scale(0.96);
+}
+
+.source-label,
+.source-chip {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--text);
+}
+
+.source-chip:hover {
+  background: var(--fill-hover);
+}
+
+/* Source picker */
+.media-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  padding: 14px 14px 8px;
+  box-sizing: border-box;
+}
+
+.source-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.source-row:hover {
+  background: var(--fill);
+}
+
+.source-row.selected {
+  background: var(--fill-hover);
+}
+
+.source-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-2);
+}
+
+.source-dot.playing {
+  background: #32d74b;
+}
+
+.source-name {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.source-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .controls {
   display: flex;
   justify-content: center;

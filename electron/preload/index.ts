@@ -16,6 +16,7 @@ const api: IslandApi = {
   onAlert: (cb) => subscribe('island:alert', cb),
   setHitRect: (rect) => ipcRenderer.send('island:hit-rect', rect),
   media: (cmd) => ipcRenderer.send('island:media', cmd),
+  mediaAction: (action) => ipcRenderer.send('island:media-action', action),
   timer: (action) => ipcRenderer.send('island:timer', action),
   volume: (cmd) => ipcRenderer.send('island:volume', cmd),
   onScreenshot: (cb) => subscribe('island:screenshot', cb),

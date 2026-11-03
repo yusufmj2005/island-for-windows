@@ -70,7 +70,13 @@ export const GridIcon = ({ size = 18, color = 'currentColor' }: P) => (
   </svg>
 );
 
-export const ChevronLeftIcon = ({ size = 14, color = 'currentColor' }: P) => (
+export const ChevronDownIcon = ({ size = 12, color = 'currentColor' }: P) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+);
+
+export const ChevronLeftIcon =({ size = 14, color = 'currentColor' }: P) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M15 5l-7 7 7 7" />
   </svg>

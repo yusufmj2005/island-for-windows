@@ -11,7 +11,7 @@ import {
   Tray,
 } from 'electron';
 import path from 'node:path';
-import type { HitRect, IslandSnapshot, PowerState, PrivacyState, VolumeState } from '../../src/shared/types';
+import type { HitRect, IslandSnapshot, MediaState, PowerState, PrivacyState, VolumeState } from '../../src/shared/types';
 import { installFileLog } from './log';
 import { RecentAppsService } from './RecentAppsService';
 import { ScreenshotService } from './ScreenshotService';
@@ -19,7 +19,7 @@ import { Store } from './Store';
 import { TimerService } from './TimerService';
 import { WindowsHelper } from './WindowsHelper';
 import { MediaService } from './media/MediaService';
-import { parseHitRect, parseMediaCommand, parseTimerAction, parseVolumeCommand } from './validate';
+import { parseHitRect, parseMediaAction, parseMediaCommand, parseTimerAction, parseVolumeCommand } from './validate';
 
 // The window is a fixed transparent canvas big enough for the largest island state.
 // The island morphs inside it; the window itself never resizes.
@@ -75,7 +75,7 @@ function toggleHidden() {
 
 function snapshot(): IslandSnapshot {
   return {
-    media: media.getState(),
+    media: withAppNames(media.getState()),
     timers: timers.getTimers(),
     privacy,
     volume,
@@ -83,6 +83,20 @@ function snapshot(): IslandSnapshot {
     hideWhenIdle: store.get().settings.hideWhenIdle,
   };
 }
+
+/** Adds readable app names ("Spotify", "Firefox") to the media state for the player. */
+function withAppNames(state: MediaState): MediaState {
+  const name = (app: string) => recentApps.nameForMediaApp(app) ?? appLabel(app);
+  const sessions = Array.isArray(state.sessions) ? state.sessions : state.sessions ? [state.sessions] : [];
+  return {
+    ...state,
+    appName: state.app ? name(state.app) : undefined,
+    sessions: sessions.map((s) => ({ ...s, name: name(s.app) })),
+  };
+}
+
+/** "Spotify.exe" -> "Spotify"; opaque ids stay as they are. */
+const appLabel = (app: string) => app.replace(/\.exe$/i, '').split('!')[0];
 
 function broadcast() {
   if (win && !win.isDestroyed()) win.webContents.send('island:snapshot', snapshot());
@@ -307,6 +321,10 @@ function registerIpc() {
     hitRect = raw === null ? null : parseHitRect(raw);
     pollPointer();
   });
+  ipcMain.on('island:media-action', (_e, raw) => {
+    const action = parseMediaAction(raw);
+    if (action) helper.mediaAction(action);
+  });
   ipcMain.on('island:media', (_e, raw) => {
     const cmd = parseMediaCommand(raw);
     if (cmd) media.command(cmd);
@@ -388,6 +406,10 @@ app.whenReady().then(() => {
   });
   // A screenshot writes several clipboard formats in a burst; look once it settles.
   let clipboardTimer: NodeJS.Timeout | undefined;
+  // No window to bring forward (e.g. Spotify closed to the tray): start or reopen the app.
+  helper.on('media-focus', ({ app, ok }) => {
+    if (!ok && !recentApps.launchMediaApp(app)) console.warn(`[media] can't open ${app}`);
+  });
   helper.on('clipboard', () => {
     clearTimeout(clipboardTimer);
     clipboardTimer = setTimeout(async () => {

@@ -8,7 +8,7 @@ import { useNow } from '../hooks/useNow';
 import { useVolumeControl } from '../hooks/useVolumeControl';
 import { playChime } from '../lib/chime';
 import type { MediaState, RecentApp, TimerState } from '../shared/types';
-import { CompactMedia, ExpandedMedia } from '../views/MediaViews';
+import { CompactMedia, ExpandedMedia, MediaSources, mediaSourcesHeight } from '../views/MediaViews';
 import {
   AlertView,
   BatteryView,
@@ -26,7 +26,7 @@ import { Art, Ring } from './Bits';
  * none = the activity itself (or the launcher when nothing is running);
  * media = the full music player, opened from the launcher's mini player.
  */
-type Panel = 'none' | 'launcher' | 'timer-setup' | 'media';
+type Panel = 'none' | 'launcher' | 'timer-setup' | 'media' | 'sources';
 
 const islandSpring: Transition = { type: 'spring', stiffness: 350, damping: 30, mass: 0.8 };
 /** Collapse an expanded island this long after the cursor leaves it. */
@@ -77,6 +77,7 @@ export function Island() {
   // Scrolling on a closed island shows the volume bar; on an open one, a chip floats over it.
   else if (vol.showing && !expanded) view = 'volume';
   else if (expanded && panel === 'timer-setup') view = 'timer-setup';
+  else if (expanded && panel === 'sources' && launcherMedia) view = 'media-sources';
   else if (expanded && panel === 'media' && launcherMedia) view = 'expanded-media';
   else if (expanded && primary && panel === 'none') view = `expanded-${primary.kind}` as View;
   else if (expanded) view = launcherMedia ? 'launcher-media' : 'launcher';
@@ -84,7 +85,11 @@ export function Island() {
   else view = pointerInside ? 'idle-hover' : 'idle';
   const isLauncher = view === 'launcher' || view === 'launcher-media';
   const shape =
-    isLauncher && recentApps.length > 0 ? { ...SHAPES[view], height: SHAPES[view].height + RECENT_APPS_HEIGHT } : SHAPES[view];
+    isLauncher && recentApps.length > 0
+      ? { ...SHAPES[view], height: SHAPES[view].height + RECENT_APPS_HEIGHT }
+      : view === 'media-sources'
+        ? { ...SHAPES[view], height: mediaSourcesHeight(launcherMedia?.sessions?.length ?? 1) }
+        : SHAPES[view];
   const showBubble = !!secondary && !expanded;
   // 'idle' means nothing to show and the cursor isn't on it; 'idle-hover' wakes it.
   const { mic, camera } = snapshot.privacy;
@@ -242,6 +247,7 @@ export function Island() {
                 onOpenLauncher: () => setPanel('launcher'),
                 onOpenTimer: () => setPanel('timer-setup'),
                 onOpenMedia: () => setPanel('media'),
+                onOpenSources: () => setPanel('sources'),
                 onTimerBack: () => setPanel('launcher'),
                 // The new timer becomes the front activity, so show it.
                 onTimerStarted: () => setPanel('none'),
@@ -308,6 +314,7 @@ interface ViewOptions {
   onOpenLauncher: () => void;
   onOpenTimer: () => void;
   onOpenMedia: () => void;
+  onOpenSources: () => void;
   onTimerBack: () => void;
   onTimerStarted: () => void;
 }
@@ -330,16 +337,20 @@ function renderView(view: View, primary: Activity | null, o: ViewOptions) {
     );
   }
   if (view === 'timer-setup') return <TimerSetup onBack={o.onTimerBack} onStarted={o.onTimerStarted} />;
+  if (view === 'media-sources' && o.launcherMedia) {
+    // Back and picking both return to the full player.
+    return <MediaSources media={o.launcherMedia} onBack={o.onOpenMedia} onPicked={o.onOpenMedia} />;
+  }
   // The full player can be opened from the launcher even when music isn't the front activity.
   if (view === 'expanded-media' && o.launcherMedia) {
-    return <ExpandedMedia media={o.launcherMedia} color={o.artColor} onOpenLauncher={o.onOpenLauncher} />;
+    return <ExpandedMedia media={o.launcherMedia} color={o.artColor} onOpenLauncher={o.onOpenLauncher} onOpenSources={o.onOpenSources} />;
   }
   if (!primary) return null;
   const expanded = view.startsWith('expanded');
   switch (primary.kind) {
     case 'media':
       return expanded ? (
-        <ExpandedMedia media={primary.media} color={o.artColor} onOpenLauncher={o.onOpenLauncher} />
+        <ExpandedMedia media={primary.media} color={o.artColor} onOpenLauncher={o.onOpenLauncher} onOpenSources={o.onOpenSources} />
       ) : (
         <CompactMedia media={primary.media} color={o.artColor} />
       );

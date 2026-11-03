@@ -30,6 +30,7 @@ export type View =
   | 'launcher'
   | 'launcher-media'
   | 'timer-setup'
+  | 'media-sources'
   | 'battery'
   | 'volume'
   | 'screenshot';
@@ -52,6 +53,8 @@ export const SHAPES: Record<View, Shape> = {
   launcher: { width: 384, height: 96, radius: 34 },
   'launcher-media': { width: 384, height: 152, radius: 36 },
   'timer-setup': { width: 384, height: 148, radius: 38 },
+  // Height grows with the number of sources (see mediaSourcesHeight).
+  'media-sources': { width: 384, height: 140, radius: 32 },
   battery: { width: 300, height: 36, radius: 18 },
   volume: { width: 300, height: 36, radius: 18 },
   screenshot: { width: 380, height: 92, radius: 32 },

@@ -4,7 +4,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import readline from 'node:readline';
-import type { MediaCommand, PowerState, VolumeCommand, VolumeState } from '../../src/shared/types';
+import type { MediaAction, MediaCommand, PowerState, VolumeCommand, VolumeState } from '../../src/shared/types';
 import type { MediaProvider, MediaProviderEvents } from './media/MediaProvider';
 
 const MAX_BACKOFF_MS = 30_000;
@@ -48,6 +48,8 @@ type HelperEvents = MediaProviderEvents & {
   privacy: [{ mic: DeviceUser[]; camera: DeviceUser[] }];
   /** Something new was put on the clipboard. */
   clipboard: [];
+  /** Result of bringing a media app to the front; `ok` is false when it has no window. */
+  'media-focus': [{ app: string; ok: boolean }];
 };
 
 const toDeviceUsers = (v: unknown): DeviceUser[] =>
@@ -95,6 +97,12 @@ export class WindowsHelper extends EventEmitter<HelperEvents> implements MediaPr
 
   send(cmd: MediaCommand) {
     this.child?.stdin.write(`${cmd}\n`);
+  }
+
+  mediaAction(action: MediaAction) {
+    const line =
+      action.type === 'seek' ? `media-seek ${action.positionMs}` : action.type === 'select' ? `media-select ${action.app}` : 'media-focus';
+    this.child?.stdin.write(`${line}\n`);
   }
 
   volume(cmd: VolumeCommand) {
@@ -168,6 +176,9 @@ export class WindowsHelper extends EventEmitter<HelperEvents> implements MediaPr
         break;
       case 'clipboard':
         this.emit('clipboard');
+        break;
+      case 'media-focus':
+        if (typeof msg.app === 'string') this.emit('media-focus', { app: msg.app, ok: msg.ok === true });
         break;
       case 'privacy':
         this.emit('privacy', { mic: toDeviceUsers(msg.mic), camera: toDeviceUsers(msg.camera) });

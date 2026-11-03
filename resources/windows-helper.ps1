@@ -7,6 +7,7 @@
 #   clipboard     the clipboard changed (Island then checks it for a screenshot)
 #   start-apps / open-apps / foreground   app usage, for "Recent apps"
 # Accepts commands on stdin, one per line: toggle | play | pause | next | prev |
+#   media-seek <ms> | media-select <app id> | media-focus |
 #   vol-set <0-100> | mute-toggle | quit
 # Exits when stdin closes, so it never outlives the app.
 
@@ -496,6 +497,54 @@ public static class Apps {
 
   public static AppInfo Foreground() { return Describe(GetForegroundWindow()); }
 
+  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+  [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool attach);
+  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+
+  /**
+   * Brings the window of the app behind a media session to the front. `sourceId` is the
+   * session's app id: an exe name ("Spotify.exe") or an AppUserModelID ("Chrome",
+   * "308046B0AF4A39CB"). A window whose title contains `titleHint` (the song or video,
+   * e.g. the right browser window) wins. Returns false when the app has no open window.
+   */
+  public static bool FocusMediaApp(string sourceId, string titleHint) {
+    string src = (sourceId ?? "").ToLowerInvariant();
+    if (src.Length == 0) return false;
+    IntPtr best = IntPtr.Zero;
+    int bestScore = 0;
+    EnumWindows((h, l) => {
+      if (!IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero) return true;  // GW_OWNER
+      if ((GetWindowLong(h, -20) & 0x80) != 0) return true;                     // WS_EX_TOOLWINDOW
+      string title = Text(h, false);
+      if (title.Length == 0) return true;
+      uint pid; GetWindowThreadProcessId(h, out pid);
+      string path = ProcessPath(pid);
+      string exe = path == null ? "" : System.IO.Path.GetFileName(path).ToLowerInvariant();
+      string aumid = (Aumid(h) ?? "").ToLowerInvariant();
+      bool match = aumid == src || exe == src || exe == src + ".exe" || (aumid.Length > 0 && src.StartsWith(aumid));
+      if (!match) return true;
+      int score = 1;
+      if (!string.IsNullOrEmpty(titleHint) && title.IndexOf(titleHint, StringComparison.OrdinalIgnoreCase) >= 0) score += 10;
+      if (score > bestScore) { best = h; bestScore = score; }
+      return true;
+    }, IntPtr.Zero);
+    if (best == IntPtr.Zero) return false;
+
+    if (IsIconic(best)) ShowWindow(best, 9); // SW_RESTORE
+    // Windows only lets the foreground thread move focus; borrow its input state briefly.
+    uint unused;
+    uint fg = GetWindowThreadProcessId(GetForegroundWindow(), out unused);
+    uint me = GetCurrentThreadId();
+    bool attached = fg != me && AttachThreadInput(me, fg, true);
+    BringWindowToTop(best);
+    bool ok = SetForegroundWindow(best);
+    if (attached) AttachThreadInput(me, fg, false);
+    return ok;
+  }
+
   [DllImport("shell32.dll")] static extern int SHGetKnownFolderPath(ref Guid id, uint flags, IntPtr token, out IntPtr path);
 
   /** Start menu app IDs can be "{KnownFolderGUID}\rest\app.exe"; this expands them to a real path. */
@@ -550,6 +599,17 @@ function Await($op, [Type]$resultType, [int]$timeoutMs = 3000) {
 function Emit($obj) {
     [Console]::Out.WriteLine(($obj | ConvertTo-Json -Compress -Depth 4))
     [Console]::Out.Flush()
+}
+
+# The session the island shows: the one you picked from the source list while it's still
+# around, otherwise whatever Windows considers current.
+$selectedApp = $null
+function Get-MediaSession {
+    if ($script:selectedApp) {
+        foreach ($s in $manager.GetSessions()) { if ($s.SourceAppUserModelId -eq $script:selectedApp) { return $s } }
+        $script:selectedApp = $null   # that app stopped playing / closed
+    }
+    return $manager.GetCurrentSession()
 }
 
 function Get-ThumbnailBase64($props) {
@@ -623,7 +683,26 @@ while ($true) {
         $pendingLine = $stdin.ReadLineAsync()
         if ($cmd -match '^vol-set (\d{1,3})$') { $volumeTarget = [int]$Matches[1]; continue }
         if ($cmd -eq 'mute-toggle') { try { [Volume]::ToggleMute() } catch { }; $volumeChanged = $true; continue }
-        $session = $manager.GetCurrentSession()
+        if ($cmd -match '^media-select (.+)$') { $selectedApp = $Matches[1]; $lastPoll = [DateTime]::MinValue; continue }
+        if ($cmd -eq 'media-focus') {
+            $session = Get-MediaSession
+            if ($session) {
+                $ok = $false
+                try {
+                    $p = Await ($session.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
+                    $ok = [Apps]::FocusMediaApp($session.SourceAppUserModelId, $p.Title)
+                } catch { }
+                Emit @{ type = 'media-focus'; app = $session.SourceAppUserModelId; ok = $ok }
+            }
+            continue
+        }
+        $session = Get-MediaSession
+        if ($session -and $cmd -match '^media-seek (\d{1,9})$') {
+            # Position is in 100 ns ticks.
+            try { $null = Await ($session.TryChangePlaybackPositionAsync([long]$Matches[1] * 10000)) ([bool]) } catch { Emit @{ type = 'error'; message = "seek: $_" } }
+            $lastPoll = [DateTime]::MinValue
+            continue
+        }
         if ($session) {
             try {
                 $op = switch ($cmd) {
@@ -678,9 +757,15 @@ while ($true) {
             }
         } catch { }
         try {
-            $session = $manager.GetCurrentSession()
+            $session = Get-MediaSession
+            # Every app with a media session, for the source picker.
+            $sessionList = @(foreach ($s in $manager.GetSessions()) {
+                $sp = $null
+                try { $sp = Await ($s.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties]) } catch { }
+                @{ app = $s.SourceAppUserModelId; title = "$($sp.Title)"; playing = ($s.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing') }
+            })
             if ($null -eq $session) {
-                $state = @{ type = 'media'; active = $false }
+                $state = @{ type = 'media'; active = $false; sessions = $sessionList }
             } else {
                 $props = Await ($session.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
                 $info = $session.GetPlaybackInfo()
@@ -700,6 +785,8 @@ while ($true) {
                     playing     = ($info.PlaybackStatus.ToString() -eq 'Playing')
                     canNext     = $info.Controls.IsNextEnabled
                     canPrev     = $info.Controls.IsPreviousEnabled
+                    canSeek     = $info.Controls.IsPlaybackPositionEnabled
+                    sessions    = $sessionList
                     positionMs  = [long]$tl.Position.TotalMilliseconds
                     durationMs  = [long]($tl.EndTime - $tl.StartTime).TotalMilliseconds
                     updatedAtMs = $tl.LastUpdatedTime.ToUnixTimeMilliseconds()
@@ -707,8 +794,10 @@ while ($true) {
                 }
             }
             # Ignore updatedAtMs when diffing: some players bump it every poll while paused.
-            $diffKey = ($state.GetEnumerator() | Where-Object { $_.Key -ne 'updatedAtMs' } |
-                Sort-Object Key | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ';'
+            $diffKey = ($state.GetEnumerator() | Where-Object { $_.Key -ne 'updatedAtMs' } | Sort-Object Key | ForEach-Object {
+                $v = if ($_.Value -is [array]) { ($_.Value | ForEach-Object { "$($_.app)/$($_.title)/$($_.playing)" }) -join ',' } else { "$($_.Value)" }
+                "$($_.Key)=$v"
+            }) -join ';'
             if ($diffKey -ne $lastSent) {
                 $lastSent = $diffKey
                 Emit $state

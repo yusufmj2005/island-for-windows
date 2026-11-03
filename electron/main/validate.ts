@@ -1,5 +1,5 @@
 // Validation for every payload that crosses the IPC boundary from the renderer.
-import type { HitRect, MediaCommand, TimerAction, VolumeCommand } from '../../src/shared/types';
+import type { HitRect, MediaAction, MediaCommand, TimerAction, VolumeCommand } from '../../src/shared/types';
 
 const MEDIA_COMMANDS: readonly string[] = ['toggle', 'play', 'pause', 'next', 'prev'];
 const MAX_TIMER_MS = 24 * 60 * 60 * 1000;
@@ -11,6 +11,15 @@ const isNum = (v: unknown, min: number, max: number): v is number =>
 
 export function parseMediaCommand(v: unknown): MediaCommand | null {
   return typeof v === 'string' && MEDIA_COMMANDS.includes(v) ? (v as MediaCommand) : null;
+}
+
+export function parseMediaAction(v: unknown): MediaAction | null {
+  if (!isObj(v)) return null;
+  if (v.type === 'open') return { type: 'open' };
+  if (v.type === 'seek' && isNum(v.positionMs, 0, MAX_TIMER_MS)) return { type: 'seek', positionMs: Math.round(v.positionMs) };
+  // App ids are exe names or AppUserModelIDs; keep them to one safe line for the helper.
+  if (v.type === 'select' && typeof v.app === 'string' && /^[\w.!\-; ]{1,200}$/.test(v.app)) return { type: 'select', app: v.app };
+  return null;
 }
 
 export function parseVolumeCommand(v: unknown): VolumeCommand | null {

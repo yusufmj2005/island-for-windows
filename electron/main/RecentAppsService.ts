@@ -55,6 +55,30 @@ export class RecentAppsService extends EventEmitter<{ change: [] }> {
     );
   }
 
+  /** The Start menu entry for a media session's app id ("Spotify.exe", "Chrome", an AUMID). */
+  private startAppForMedia(appId: string) {
+    const id = appId.toLowerCase();
+    return (
+      this.startApps.find((s) => s.id.toLowerCase() === id) ??
+      this.startApps.find((s) => s.path && path.basename(s.path).toLowerCase() === id) ??
+      // "308046B0AF4A39CB;PrivateBrowsingAUMID" -> the Firefox entry
+      this.startApps.find((s) => id.startsWith(`${s.id.toLowerCase()};`))
+    );
+  }
+
+  /** "Spotify.exe" -> "Spotify", "308046B0AF4A39CB" -> "Firefox"; null when unknown. */
+  nameForMediaApp(appId: string) {
+    return this.startAppForMedia(appId)?.name ?? null;
+  }
+
+  /** Starts (or reopens) a media app through the Start menu; false if it isn't listed there. */
+  launchMediaApp(appId: string) {
+    const s = this.startAppForMedia(appId);
+    if (!s) return false;
+    spawn('explorer.exe', [`shell:AppsFolder\\${s.id}`], { detached: true, stdio: 'ignore' }).unref();
+    return true;
+  }
+
   /** A readable name for an app using the mic or camera, using the Start menu where it can. */
   displayName(user: DeviceUser) {
     const fam = user.family?.toLowerCase();

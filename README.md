@@ -36,7 +36,7 @@ To close Island: the tray icon's menu → **Quit Island**, or click the idle isl
 | Recent apps | The apps you last brought to the front, newest first; click an icon to open the app. Right-click an icon to **pin** it to the front (blue dot) or **remove** it. The list stays on this PC (`island-state.json`) |
 | Timer button | Setup panel: pick a duration with − / + (or scroll), presets from 1 min to 1 hr, then **Start** |
 | Grid button (any expanded view) | Opens the launcher on top of the current activity; **Back** returns to it |
-| Music playing | Album art + waveform tinted from the artwork; click for title, progress and controls |
+| Music playing | Album art + waveform tinted from the artwork; click for title, progress and controls. **Click or drag the progress bar** to seek (where the player supports it), **click the album art** to bring the player app to the front, and when several apps play media, the **source chip** under the artist lets you pick which one the island controls |
 | Timer | Countdown ring + time; click for pause, cancel, +1 min |
 | Two activities | The second one splits off into a bubble; click it to swap |
 | Volume | Scroll on the island to change the system volume (2% per notch); a volume bar shows on the closed island, or a chip over the open one. Changes made with the keyboard volume keys or Windows' slider show the same bar, live. Click the speaker or **middle-click** the island to mute |

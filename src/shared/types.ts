@@ -2,9 +2,32 @@
 
 export type MediaCommand = 'toggle' | 'play' | 'pause' | 'next' | 'prev';
 
+/** One app with a media session, for the source picker. */
+export interface MediaSource {
+  /** The session's app id, e.g. "Spotify.exe" or "Chrome". */
+  app: string;
+  /** Readable name, e.g. "Spotify". */
+  name: string;
+  title: string;
+  playing: boolean;
+}
+
+/** Player actions beyond the basic buttons. */
+export type MediaAction =
+  | { type: 'seek'; positionMs: number }
+  | { type: 'select'; app: string }
+  /** Bring the playing app's window to the front (or start it). */
+  | { type: 'open' };
+
 export interface MediaState {
   active: boolean;
   app?: string;
+  /** Readable name of `app`. */
+  appName?: string;
+  /** The player accepts seeking (dragging the progress bar). */
+  canSeek?: boolean;
+  /** All apps with a media session; more than one shows the source picker. */
+  sessions?: MediaSource[];
   title?: string;
   artist?: string;
   album?: string;
@@ -114,6 +137,7 @@ export interface IslandApi {
   onAlert(cb: (a: IslandAlert) => void): () => void;
   setHitRect(rect: HitRect | null): void;
   media(cmd: MediaCommand): void;
+  mediaAction(action: MediaAction): void;
   timer(action: TimerAction): void;
   volume(cmd: VolumeCommand): void;
   onScreenshot(cb: (shot: ScreenshotPreview) => void): () => void;
