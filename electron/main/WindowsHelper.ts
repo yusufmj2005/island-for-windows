@@ -16,6 +16,14 @@ export interface SeenApp {
   name: string;
 }
 
+/** An app using the microphone or camera. */
+export interface DeviceUser {
+  path: string | null;
+  /** Package family name, for Store apps. */
+  family: string | null;
+  name: string | null;
+}
+
 /** A Start menu entry: its display name and the ID Windows launches it by. */
 export interface StartApp {
   name: string;
@@ -36,7 +44,19 @@ type HelperEvents = MediaProviderEvents & {
   power: [PowerState];
   /** System volume or mute changed (from Island or anywhere else). */
   volume: [VolumeState];
+  /** Apps using the microphone / camera changed. */
+  privacy: [{ mic: DeviceUser[]; camera: DeviceUser[] }];
+  /** Something new was put on the clipboard. */
+  clipboard: [];
 };
+
+const toDeviceUsers = (v: unknown): DeviceUser[] =>
+  Array.isArray(v)
+    ? v.flatMap((u: Record<string, unknown>) => {
+        const user = { path: str(u?.path), family: str(u?.family), name: str(u?.name) };
+        return user.path || user.family ? [user] : [];
+      })
+    : [];
 
 const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : null);
 const toSeen = (v: unknown): SeenApp | null => {
@@ -143,6 +163,12 @@ export class WindowsHelper extends EventEmitter<HelperEvents> implements MediaPr
         break;
       case 'open-apps':
         if (Array.isArray(msg.apps)) this.emit('open-apps', msg.apps.map(toSeen).filter((a): a is SeenApp => !!a));
+        break;
+      case 'clipboard':
+        this.emit('clipboard');
+        break;
+      case 'privacy':
+        this.emit('privacy', { mic: toDeviceUsers(msg.mic), camera: toDeviceUsers(msg.camera) });
         break;
       case 'volume':
         if (typeof msg.level === 'number') {

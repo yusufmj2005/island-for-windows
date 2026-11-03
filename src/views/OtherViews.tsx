@@ -1,9 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import { TIMER_COLOR } from '../activities';
 import { BackChip } from '../components/Bits';
-import { BatteryIcon, BellIcon, ChevronRightIcon, PowerIcon, SpeakerIcon, TimerIcon } from '../components/Icons';
+import {
+  BatteryIcon,
+  BellIcon,
+  ChevronRightIcon,
+  DownloadIcon,
+  FolderIcon,
+  PowerIcon,
+  SpeakerIcon,
+  TimerIcon,
+} from '../components/Icons';
 import type { BatteryFlash } from '../hooks/useBatteryFlash';
-import type { IslandAlert, MediaState, PowerState, RecentApp } from '../shared/types';
+import type { IslandAlert, MediaState, PowerState, PrivacyState, RecentApp, ScreenshotPreview } from '../shared/types';
 import { MiniMedia } from './MediaViews';
 
 /** How many recent apps fit in the launcher's row. */
@@ -24,6 +33,63 @@ export function AlertView({ alert }: { alert: IslandAlert }) {
       </div>
     </div>
   );
+}
+
+/** Screenshot preview: drag the thumbnail into any app, or save it to Pictures\Screenshots. */
+export function ScreenshotView({ shot }: { shot: ScreenshotPreview }) {
+  const [saved, setSaved] = useState<'no' | 'saving' | 'yes' | 'failed'>('no');
+  const stop = (fn: () => void) => (e: MouseEvent) => {
+    e.stopPropagation();
+    fn();
+  };
+  const save = async () => {
+    setSaved('saving');
+    setSaved((await window.island.saveScreenshot(shot.id)) ? 'yes' : 'failed');
+  };
+
+  return (
+    <div className="row screenshot">
+      <img
+        className="shot-thumb"
+        src={shot.thumb}
+        alt="Screenshot"
+        title={`${shot.width} × ${shot.height} · drag into any app`}
+        draggable
+        onDragStart={(e) => {
+          // A native file drag, so it can be dropped into Discord, WhatsApp, a folder...
+          e.preventDefault();
+          window.island.dragScreenshot(shot.id);
+        }}
+      />
+      <div className="meta">
+        <div className="title">{saved === 'yes' ? 'Screenshot saved' : 'Screenshot'}</div>
+        <div className="subtitle">
+          {saved === 'failed' ? "Couldn't save" : 'Drag to share'}
+        </div>
+      </div>
+      {saved === 'yes' ? (
+        <button className="shot-btn" onClick={stop(() => window.island.revealScreenshot())}>
+          <FolderIcon size={14} /> Show
+        </button>
+      ) : (
+        <button className="shot-btn primary" disabled={saved === 'saving'} onClick={stop(save)}>
+          <DownloadIcon size={14} /> Save
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** "Discord · Mic & camera, Chrome · Microphone" */
+export function privacyLabel({ mic, camera }: PrivacyState) {
+  const names = [...new Set([...camera, ...mic])];
+  return names
+    .map((n) => {
+      const m = mic.includes(n);
+      const c = camera.includes(n);
+      return `${n} · ${m && c ? 'Mic & camera' : c ? 'Camera' : 'Microphone'}`;
+    })
+    .join(', ');
 }
 
 /**
@@ -145,14 +211,20 @@ export function LauncherView({
               <button
                 key={a.id}
                 className="app-icon"
-                title={a.name}
+                title={`${a.name}${a.pinned ? ' (pinned)' : ''} · right-click for options`}
                 aria-label={`Open ${a.name}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpenApp(a.id);
                 }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation(); // not the island's own menu
+                  window.island.showAppMenu(a.id);
+                }}
               >
                 {a.icon ? <img src={a.icon} alt="" draggable={false} /> : <span className="app-letter">{a.name.charAt(0)}</span>}
+                {a.pinned && <span className="app-pin" />}
               </button>
             ))}
           </div>

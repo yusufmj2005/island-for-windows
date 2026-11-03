@@ -47,9 +47,25 @@ export interface VolumeState {
 
 export type VolumeCommand = { type: 'set'; level: number } | { type: 'toggle-mute' };
 
+/** A screenshot (any image) that just landed on the clipboard. */
+export interface ScreenshotPreview {
+  id: string;
+  /** Small PNG data URL for the island. */
+  thumb: string;
+  width: number;
+  height: number;
+}
+
+/** Names of the apps using the microphone / camera right now. */
+export interface PrivacyState {
+  mic: string[];
+  camera: string[];
+}
+
 export interface IslandSnapshot {
   media: MediaState;
   timers: TimerState[];
+  privacy: PrivacyState;
   /** System volume of the default output device; null until reported or with no device. */
   volume: VolumeState | null;
   /** Null until Windows has reported it. */
@@ -64,6 +80,7 @@ export interface RecentApp {
   name: string;
   /** Icon as a data URL, or null when Windows doesn't provide one. */
   icon: string | null;
+  pinned: boolean;
 }
 
 export interface IslandAlert {
@@ -99,9 +116,15 @@ export interface IslandApi {
   media(cmd: MediaCommand): void;
   timer(action: TimerAction): void;
   volume(cmd: VolumeCommand): void;
+  onScreenshot(cb: (shot: ScreenshotPreview) => void): () => void;
+  saveScreenshot(id: string): Promise<boolean>;
+  revealScreenshot(): void;
+  dragScreenshot(id: string): void;
   getRecentApps(): Promise<RecentApp[]>;
   onRecentApps(cb: (apps: RecentApp[]) => void): () => void;
   openApp(id: string): void;
+  /** Right-click menu for a recent app: pin / unpin, remove. */
+  showAppMenu(id: string): void;
   showMenu(): void;
   quit(): void;
 }

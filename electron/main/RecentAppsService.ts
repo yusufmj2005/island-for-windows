@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import path from 'node:path';
 import type { RecentApp } from '../../src/shared/types';
-import type { SeenApp, StartApp } from './WindowsHelper';
+import type { DeviceUser, SeenApp, StartApp } from './WindowsHelper';
 
 /** How many apps are remembered; the island shows the first few. */
 const MAX_REMEMBERED = 12;
@@ -19,6 +19,8 @@ export interface StoredRecentApp {
   /** File the icon is read from. */
   iconPath: string | null;
   lastUsed: number;
+  /** Pinned apps stay at the front, in the order they were pinned (the value is when). */
+  pinnedAt?: number;
 }
 
 const same = (a?: string | null, b?: string | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -48,7 +50,21 @@ export class RecentAppsService extends EventEmitter<{ change: [] }> {
 
   /** The list for the island, newest first, with icons as data URLs. */
   async list(): Promise<RecentApp[]> {
-    return Promise.all(this.apps.map(async (a) => ({ id: a.id, name: a.name, icon: await this.icon(a) })));
+    return Promise.all(
+      this.apps.map(async (a) => ({ id: a.id, name: a.name, icon: await this.icon(a), pinned: a.pinnedAt != null })),
+    );
+  }
+
+  /** A readable name for an app using the mic or camera, using the Start menu where it can. */
+  displayName(user: DeviceUser) {
+    const fam = user.family?.toLowerCase();
+    const match =
+      (fam ? this.startApps.find((s) => s.id.toLowerCase().startsWith(`${fam}!`)) : undefined) ??
+      (user.path ? this.startApps.find((s) => same(s.path, user.path)) : undefined);
+    if (match) return match.name;
+    if (user.name) return user.name;
+    // "Microsoft.WindowsCamera_8wekyb3d8bbwe" -> "WindowsCamera"
+    return user.family?.split('_')[0].split('.').pop() ?? 'An app';
   }
 
   setStartApps(apps: StartApp[]) {
@@ -69,7 +85,25 @@ export class RecentAppsService extends EventEmitter<{ change: [] }> {
   touch(seen: SeenApp) {
     const entry = this.resolve(seen);
     if (!entry) return;
-    this.apps = [{ ...entry, lastUsed: Date.now() }, ...this.apps.filter((a) => a.id !== entry.id)];
+    const pinnedAt = this.apps.find((a) => a.id === entry.id)?.pinnedAt;
+    this.apps = [{ ...entry, lastUsed: Date.now(), pinnedAt }, ...this.apps.filter((a) => a.id !== entry.id)];
+    this.commit();
+  }
+
+  find(id: string) {
+    return this.apps.find((a) => a.id === id);
+  }
+
+  togglePin(id: string) {
+    const a = this.find(id);
+    if (!a) return;
+    a.pinnedAt = a.pinnedAt == null ? Date.now() : undefined;
+    this.commit();
+  }
+
+  /** Drops an app from the list; it comes back only if you use it again. */
+  remove(id: string) {
+    this.apps = this.apps.filter((a) => a.id !== id);
     this.commit();
   }
 
@@ -87,9 +121,11 @@ export class RecentAppsService extends EventEmitter<{ change: [] }> {
   }
 
   private commit() {
-    this.apps.sort((a, b) => b.lastUsed - a.lastUsed);
-    this.apps = this.apps.slice(0, MAX_REMEMBERED);
-    const key = this.apps.map((a) => a.id).join('\n');
+    // Pinned first (oldest pin first), then most recently used; pinned apps are never dropped.
+    this.apps.sort((a, b) => (a.pinnedAt ?? Infinity) - (b.pinnedAt ?? Infinity) || b.lastUsed - a.lastUsed);
+    const pinned = this.apps.filter((a) => a.pinnedAt != null);
+    this.apps = [...pinned, ...this.apps.filter((a) => a.pinnedAt == null).slice(0, MAX_REMEMBERED)];
+    const key = this.apps.map((a) => `${a.id}${a.pinnedAt != null ? ' (pinned)' : ''}`).join('\n');
     if (key === this.lastKey) return;
     this.lastKey = key;
     this.emit('change');

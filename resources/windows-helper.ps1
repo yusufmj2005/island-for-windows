@@ -3,6 +3,8 @@
 #   fullscreen    whether a fullscreen app is in front on the primary display
 #   power         battery presence, percentage and charging state
 #   volume        system volume (percent) and mute state
+#   privacy       apps using the microphone or camera right now
+#   clipboard     the clipboard changed (Island then checks it for a screenshot)
 #   start-apps / open-apps / foreground   app usage, for "Recent apps"
 # Accepts commands on stdin, one per line: toggle | play | pause | next | prev |
 #   vol-set <0-100> | mute-toggle | quit
@@ -48,6 +50,14 @@ public static class Foreground {
     if (!GetWindowRect(h, out r)) return false;
     return r.L <= mi.rcMonitor.L && r.T <= mi.rcMonitor.T && r.R >= mi.rcMonitor.R && r.B >= mi.rcMonitor.B;
   }
+}
+"@
+
+# Clipboard change counter: cheap to poll, and tells Island when to look for a new screenshot.
+Add-Type @"
+using System.Runtime.InteropServices;
+public static class Clip {
+  [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
 }
 "@
 
@@ -151,6 +161,157 @@ public static class Volume {
       bool muted; v.GetMute(out muted);
       v.SetMute(!muted, ref ctx);
     } finally { Marshal.ReleaseComObject(v); }
+  }
+}
+"@
+
+# Which apps are using the microphone / camera right now. Microphone: active capture sessions
+# from the audio engine. Camera: Windows logs each use under
+# CapabilityAccessManager\ConsentStore; an open session has LastUsedTimeStop = 0.
+Add-Type @"
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32;
+
+public class DeviceUser {
+  public string Path;    // desktop apps
+  public string Family;  // Store apps (package family name)
+  public string Name;
+}
+
+public static class Privacy {
+  const string Root = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\";
+
+  static bool Open(RegistryKey k) {
+    if (k == null) return false;
+    var start = k.GetValue("LastUsedTimeStart") as long?;
+    var stop = k.GetValue("LastUsedTimeStop") as long?;
+    return start.HasValue && start.Value != 0 && stop.HasValue && stop.Value == 0;
+  }
+
+  static string Describe(string path) {
+    if (path.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.System), StringComparison.OrdinalIgnoreCase)) return "Windows";
+    try { var d = FileVersionInfo.GetVersionInfo(path).FileDescription; if (!string.IsNullOrWhiteSpace(d)) return d.Trim(); } catch { }
+    return System.IO.Path.GetFileNameWithoutExtension(path);
+  }
+
+  // --- Microphone: active capture sessions, straight from the audio engine. ---
+  [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorCom { }
+
+  [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDeviceEnumerator {
+    [PreserveSig] int EnumAudioEndpoints(int dataFlow, int stateMask, out IMMDeviceCollection devices);
+  }
+  [ComImport, Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDeviceCollection {
+    [PreserveSig] int GetCount(out uint count);
+    [PreserveSig] int Item(uint index, out IMMDevice device);
+  }
+  [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDevice {
+    [PreserveSig] int Activate(ref Guid iid, int clsCtx, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object iface);
+  }
+  // Methods in vtable order, including unused ones.
+  [ComImport, Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioSessionManager2 {
+    [PreserveSig] int GetAudioSessionControl(IntPtr guid, uint flags, out IntPtr control);
+    [PreserveSig] int GetSimpleAudioVolume(IntPtr guid, uint flags, out IntPtr volume);
+    [PreserveSig] int GetSessionEnumerator(out IAudioSessionEnumerator sessions);
+  }
+  [ComImport, Guid("E2F5BB11-0570-40CA-ACDD-3AA01277DEE8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioSessionEnumerator {
+    [PreserveSig] int GetCount(out int count);
+    [PreserveSig] int GetSession(int index, out IAudioSessionControl2 session);
+  }
+  [ComImport, Guid("bfb7ff88-7239-4fc9-8fa2-07c950be9c6d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IAudioSessionControl2 {
+    [PreserveSig] int GetState(out int state);
+    [PreserveSig] int GetDisplayName(out IntPtr name);
+    [PreserveSig] int SetDisplayName(IntPtr name, IntPtr ctx);
+    [PreserveSig] int GetIconPath(out IntPtr path);
+    [PreserveSig] int SetIconPath(IntPtr path, IntPtr ctx);
+    [PreserveSig] int GetGroupingParam(out Guid param);
+    [PreserveSig] int SetGroupingParam(IntPtr param, IntPtr ctx);
+    [PreserveSig] int RegisterAudioSessionNotification(IntPtr n);
+    [PreserveSig] int UnregisterAudioSessionNotification(IntPtr n);
+    [PreserveSig] int GetSessionIdentifier(out IntPtr id);
+    [PreserveSig] int GetSessionInstanceIdentifier(out IntPtr id);
+    [PreserveSig] int GetProcessId(out uint pid);
+    [PreserveSig] int IsSystemSoundsSession();
+  }
+
+  [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, StringBuilder s, ref int size);
+
+  static string ProcessPath(uint pid) {
+    IntPtr hp = OpenProcess(0x1000, false, pid);
+    if (hp == IntPtr.Zero) return null;
+    try { var sb = new StringBuilder(1024); int n = sb.Capacity; return QueryFullProcessImageName(hp, 0, sb, ref n) ? sb.ToString() : null; }
+    finally { CloseHandle(hp); }
+  }
+
+  /** Apps with an active recording session on any microphone. */
+  public static List<DeviceUser> MicrophoneUsers() {
+    var list = new List<DeviceUser>();
+    var seen = new HashSet<uint>();
+    var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+    IMMDeviceCollection devices;
+    if (enumerator.EnumAudioEndpoints(1, 1, out devices) != 0) return list; // eCapture, DEVICE_STATE_ACTIVE
+    uint count; devices.GetCount(out count);
+    for (uint i = 0; i < count; i++) {
+      IMMDevice device;
+      if (devices.Item(i, out device) != 0) continue;
+      var iid = new Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F");
+      object o;
+      if (device.Activate(ref iid, 23, IntPtr.Zero, out o) != 0) continue;
+      IAudioSessionEnumerator sessions;
+      if (((IAudioSessionManager2)o).GetSessionEnumerator(out sessions) != 0) continue;
+      int n; sessions.GetCount(out n);
+      for (int s = 0; s < n; s++) {
+        IAudioSessionControl2 session;
+        if (sessions.GetSession(s, out session) != 0) continue;
+        int state; uint pid;
+        session.GetState(out state);
+        session.GetProcessId(out pid);
+        bool system = session.IsSystemSoundsSession() == 0; // S_OK means it is the system session
+        if (state != 1 || system || pid == 0 || !seen.Add(pid)) continue; // 1 = AudioSessionStateActive
+        string path = ProcessPath(pid);
+        if (path != null) list.Add(new DeviceUser { Path = path, Name = Describe(path) });
+      }
+    }
+    return list;
+  }
+
+  /** capability: "microphone" or "webcam". The microphone comes from the audio engine; the
+      camera from Windows' usage log, which some newer Windows builds no longer write. */
+  public static List<DeviceUser> InUse(string capability) {
+    if (capability == "microphone") return MicrophoneUsers();
+    var list = new List<DeviceUser>();
+    using (var store = Registry.CurrentUser.OpenSubKey(Root + capability)) {
+      if (store == null) return list;
+      foreach (var name in store.GetSubKeyNames()) {
+        if (name == "NonPackaged") continue;
+        using (var k = store.OpenSubKey(name)) if (Open(k)) list.Add(new DeviceUser { Family = name });
+      }
+      using (var np = store.OpenSubKey("NonPackaged")) {
+        if (np == null) return list;
+        foreach (var name in np.GetSubKeyNames()) {
+          using (var k = np.OpenSubKey(name)) {
+            if (!Open(k)) continue;
+            string path = name.Replace('#', '\\');
+            // An app that crashed mid-use never writes a stop time; only trust running ones.
+            if (Process.GetProcessesByName(System.IO.Path.GetFileNameWithoutExtension(path)).Length == 0) continue;
+            list.Add(new DeviceUser { Path = path, Name = Describe(path) });
+          }
+        }
+      }
+    }
+    return list;
   }
 }
 "@
@@ -361,7 +522,9 @@ function AppJson($a) { @{ path = $a.Path; aumid = $a.Aumid; name = $a.Name } }
 $lastForeground = $null
 $lastPower = $null
 $lastVolume = $null
+$lastPrivacy = $null
 $volumeChanged = $false
+$lastClip = [Clip]::GetClipboardSequenceNumber()   # only report changes after startup
 
 function Check-Volume {
     try {
@@ -426,6 +589,16 @@ while ($true) {
         } catch { }
         Check-Volume   # catches changes made elsewhere, e.g. keyboard volume keys
         try {
+            $mic = @([Privacy]::InUse('microphone') | ForEach-Object { @{ path = $_.Path; family = $_.Family; name = $_.Name } })
+            $cam = @([Privacy]::InUse('webcam') | ForEach-Object { @{ path = $_.Path; family = $_.Family; name = $_.Name } })
+            $privacyKey = (($mic + $cam) | ForEach-Object { "$($_.path)$($_.family)" }) -join '|'
+            $privacyKey = "$($mic.Count):$($cam.Count):$privacyKey"
+            if ($privacyKey -ne $lastPrivacy) {
+                $lastPrivacy = $privacyKey
+                Emit @{ type = 'privacy'; mic = $mic; camera = $cam }
+            }
+        } catch { }
+        try {
             $power = [Power]::Status()
             if ($power -and $power -ne $lastPower) {
                 $lastPower = $power
@@ -486,6 +659,10 @@ while ($true) {
             Emit @{ type = 'error'; message = "$_" }
         }
     }
+
+    # Something new on the clipboard (checked every tick so screenshot previews feel instant).
+    $clip = [Clip]::GetClipboardSequenceNumber()
+    if ($clip -ne $lastClip) { $lastClip = $clip; Emit @{ type = 'clipboard' } }
 
     Start-Sleep -Milliseconds 100
 }

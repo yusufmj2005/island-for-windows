@@ -11,9 +11,10 @@ import {
   Tray,
 } from 'electron';
 import path from 'node:path';
-import type { HitRect, IslandSnapshot, PowerState, VolumeState } from '../../src/shared/types';
+import type { HitRect, IslandSnapshot, PowerState, PrivacyState, VolumeState } from '../../src/shared/types';
 import { installFileLog } from './log';
 import { RecentAppsService } from './RecentAppsService';
+import { ScreenshotService } from './ScreenshotService';
 import { Store } from './Store';
 import { TimerService } from './TimerService';
 import { WindowsHelper } from './WindowsHelper';
@@ -44,7 +45,9 @@ let pointerInside = false;
 let capturingMouse = false;
 let power: PowerState | null = null;
 let volume: VolumeState | null = null;
+let privacy: PrivacyState = { mic: [], camera: [] };
 let helper: WindowsHelper;
+const screenshots = new ScreenshotService();
 let manuallyHidden = false;
 let fullscreenInFront = false;
 let hideShortcut: string | undefined;
@@ -69,7 +72,14 @@ function toggleHidden() {
 }
 
 function snapshot(): IslandSnapshot {
-  return { media: media.getState(), timers: timers.getTimers(), volume, power, hideWhenIdle: store.get().settings.hideWhenIdle };
+  return {
+    media: media.getState(),
+    timers: timers.getTimers(),
+    privacy,
+    volume,
+    power,
+    hideWhenIdle: store.get().settings.hideWhenIdle,
+  };
 }
 
 function broadcast() {
@@ -228,6 +238,12 @@ function buildMenu() {
       ],
     },
     {
+      label: 'Show screenshot previews',
+      type: 'checkbox',
+      checked: settings.showScreenshots,
+      click: (item) => store.updateSettings({ showScreenshots: item.checked }),
+    },
+    {
       label: 'Hide when idle (10 s)',
       type: 'checkbox',
       checked: settings.hideWhenIdle,
@@ -279,6 +295,11 @@ function registerIpc() {
     const action = parseTimerAction(raw);
     if (action) timers.apply(action);
   });
+  ipcMain.handle('island:screenshot-save', (_e, id) => typeof id === 'string' && screenshots.save(id));
+  ipcMain.on('island:screenshot-reveal', () => screenshots.reveal());
+  ipcMain.on('island:screenshot-drag', (e, id) => {
+    if (typeof id === 'string') screenshots.drag(id, e.sender);
+  });
   ipcMain.on('island:volume', (_e, raw) => {
     const cmd = parseVolumeCommand(raw);
     if (cmd) helper.volume(cmd);
@@ -288,11 +309,24 @@ function registerIpc() {
   ipcMain.on('island:open-app', (_e, raw) => {
     if (typeof raw === 'string' && raw.length < 1024) recentApps.open(raw);
   });
+  ipcMain.on('island:app-menu', (_e, raw) => {
+    const a = typeof raw === 'string' ? recentApps.find(raw) : undefined;
+    if (!a || !win) return;
+    Menu.buildFromTemplate([
+      { label: `Open ${a.name}`, click: () => recentApps.open(a.id) },
+      { type: 'separator' },
+      { label: a.pinnedAt != null ? 'Unpin' : 'Pin to front', click: () => recentApps.togglePin(a.id) },
+      { label: 'Remove from list', click: () => recentApps.remove(a.id) },
+    ]).popup({ window: win });
+  });
   ipcMain.on('island:menu', () => showMenu());
   ipcMain.on('island:quit', () => app.quit());
 }
 
 const logFile = () => path.join(app.getPath('userData'), 'island.log');
+
+// Matches build.appId, so Windows (taskbar, notifications) identifies the app as Island.
+app.setAppUserModelId('com.yusuf.island');
 
 app.whenReady().then(() => {
   installFileLog(logFile());
@@ -325,6 +359,22 @@ app.whenReady().then(() => {
   helper.on('start-apps', (apps) => recentApps.setStartApps(apps));
   helper.on('open-apps', (apps) => recentApps.seed(apps));
   helper.on('foreground', (seen) => recentApps.touch(seen));
+  helper.on('privacy', ({ mic, camera }) => {
+    const names = (users: typeof mic) => [...new Set(users.map((u) => recentApps.displayName(u)))];
+    privacy = { mic: names(mic), camera: names(camera) };
+    console.log(`[island] mic: ${privacy.mic.join(', ') || '-'}  camera: ${privacy.camera.join(', ') || '-'}`);
+    broadcast();
+  });
+  // A screenshot writes several clipboard formats in a burst; look once it settles.
+  let clipboardTimer: NodeJS.Timeout | undefined;
+  helper.on('clipboard', () => {
+    clearTimeout(clipboardTimer);
+    clipboardTimer = setTimeout(async () => {
+      if (!store.get().settings.showScreenshots) return;
+      const shot = await screenshots.check().catch(() => null);
+      if (shot && win && !win.isDestroyed()) win.webContents.send('island:screenshot', shot);
+    }, 250);
+  });
   helper.on('volume', (state) => {
     volume = state;
     broadcast();

@@ -69,6 +69,47 @@ button {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
+/* Mic / camera in use: a black capsule with a coloured dot; the label drops below on hover. */
+.privacy {
+  position: absolute;
+  top: 5px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--island);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+
+.privacy-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.privacy-label {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--island);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.privacy:hover .privacy-label {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 /* Shared pieces */
 .row {
   display: flex;
@@ -474,6 +515,62 @@ button {
   color: var(--text-2);
 }
 
+/* Screenshot preview */
+.screenshot {
+  padding: 0 14px;
+  gap: 12px;
+}
+
+.screenshot .meta {
+  margin-left: 0;
+}
+
+.shot-thumb {
+  flex: none;
+  height: 64px;
+  max-width: 120px;
+  border-radius: 10px;
+  object-fit: cover;
+  outline: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: grab;
+  transition: transform 0.12s;
+}
+
+.shot-thumb:hover {
+  transform: scale(1.04);
+}
+
+.shot-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  background: var(--fill);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.15s, transform 0.12s;
+}
+
+.shot-btn:hover {
+  background: var(--fill-hover);
+}
+
+.shot-btn.primary {
+  background: #0a84ff;
+  color: #fff;
+}
+
+.shot-btn.primary:hover {
+  background: #339cff;
+}
+
+.shot-btn:active {
+  transform: scale(0.95);
+}
+
 /* Volume bar: speaker (click to mute), bar, value. */
 .volume {
   gap: 10px;
@@ -593,6 +690,22 @@ button {
   width: 26px;
   height: 26px;
   object-fit: contain;
+}
+
+.app-icon {
+  position: relative;
+}
+
+/* Pinned: a small accent dot in the corner. */
+.app-pin {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #0a84ff;
+  box-shadow: 0 0 0 2px #2c2c2e;
 }
 
 .app-letter {

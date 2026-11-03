@@ -9,7 +9,15 @@ import { useVolumeControl } from '../hooks/useVolumeControl';
 import { playChime } from '../lib/chime';
 import type { MediaState, RecentApp, TimerState } from '../shared/types';
 import { CompactMedia, ExpandedMedia } from '../views/MediaViews';
-import { AlertView, BatteryView, LauncherView, RECENT_APPS_HEIGHT, VolumeView } from '../views/OtherViews';
+import {
+  AlertView,
+  BatteryView,
+  LauncherView,
+  privacyLabel,
+  RECENT_APPS_HEIGHT,
+  ScreenshotView,
+  VolumeView,
+} from '../views/OtherViews';
 import { CompactTimer, ExpandedTimer, TimerSetup } from '../views/TimerViews';
 import { Art, Ring } from './Bits';
 
@@ -31,9 +39,14 @@ const HIT_PADDING = 6;
 const IDLE_HIDE_MS = 10_000;
 /** Where the cursor brings a hidden island back: a band at the top centre of the screen. */
 const WAKE_ZONE = { width: 240, height: 44 };
+/** How long a screenshot preview stays after the cursor leaves it. */
+const SCREENSHOT_MS = 6000;
+/** Same colours as the iPhone's indicators. */
+const PRIVACY_CAMERA = '#32d74b';
+const PRIVACY_MIC = '#ff9f0a';
 
 export function Island() {
-  const { snapshot, pointerInside, alert, recentApps, dismissAlert } = useIsland();
+  const { snapshot, pointerInside, alert, recentApps, screenshot, dismissAlert, dismissScreenshot } = useIsland();
   const { flash, dismissFlash } = useBatteryFlash(snapshot.power);
   const vol = useVolumeControl(snapshot.volume);
   const mediaVisible = useMediaVisible(snapshot.media);
@@ -56,6 +69,7 @@ export function Island() {
 
   let view: View;
   if (alert) view = 'alert';
+  else if (screenshot && !expanded) view = 'screenshot';
   // Charging / low battery shows briefly, but never interrupts an open island.
   else if (flash && snapshot.power && !expanded) view = 'battery';
   // Scrolling on a closed island shows the volume bar; on an open one, a chip floats over it.
@@ -71,9 +85,20 @@ export function Island() {
     isLauncher && recentApps.length > 0 ? { ...SHAPES[view], height: SHAPES[view].height + RECENT_APPS_HEIGHT } : SHAPES[view];
   const showBubble = !!secondary && !expanded;
   // 'idle' means nothing to show and the cursor isn't on it; 'idle-hover' wakes it.
-  const hidden = useIdleHidden(snapshot.hideWhenIdle && view === 'idle');
+  const { mic, camera } = snapshot.privacy;
+  const privacyActive = mic.length + camera.length > 0;
+  const privacyColor = camera.length > 0 ? PRIVACY_CAMERA : PRIVACY_MIC;
+  // Never hide while the mic or camera is in use: that dot is the point.
+  const hidden = useIdleHidden(snapshot.hideWhenIdle && view === 'idle' && !privacyActive);
   const hiddenRef = useRef(hidden);
   hiddenRef.current = hidden;
+
+  // A screenshot preview stays while the cursor is on it, then leaves on its own.
+  useEffect(() => {
+    if (!screenshot || pointerInside) return;
+    const id = setTimeout(dismissScreenshot, SCREENSHOT_MS);
+    return () => clearTimeout(id);
+  }, [screenshot, pointerInside, dismissScreenshot]);
 
   // Chime when an alert arrives.
   useEffect(() => {
@@ -95,6 +120,7 @@ export function Island() {
   // Report the island's on-screen area so the main process can toggle click-through.
   const pillRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
+  const privacyRef = useRef<HTMLDivElement>(null);
   const lastRect = useRef('');
   const reportHitRect = useCallback(() => {
     if (hiddenRef.current) {
@@ -106,7 +132,7 @@ export function Island() {
       window.island.setHitRect({ x, y: 0, ...WAKE_ZONE, passive: true });
       return;
     }
-    const rects = [pillRef.current, bubbleRef.current]
+    const rects = [pillRef.current, bubbleRef.current, privacyRef.current]
       .filter((el): el is HTMLDivElement => !!el)
       .map((el) => el.getBoundingClientRect());
     if (rects.length === 0) return;
@@ -120,11 +146,15 @@ export function Island() {
     lastRect.current = key;
     window.island.setHitRect(rect);
   }, []);
-  useLayoutEffect(reportHitRect, [reportHitRect, view, showBubble, hidden]);
+  useLayoutEffect(reportHitRect, [reportHitRect, view, showBubble, hidden, privacyActive]);
 
   const onPillClick = () => {
     if (alert) {
       dismissAlert();
+      return;
+    }
+    if (view === 'screenshot') {
+      dismissScreenshot();
       return;
     }
     // Clicking only ever opens the island; it closes when the cursor leaves. Clicking an
@@ -184,6 +214,7 @@ export function Island() {
                 alertView: alert ? <AlertView alert={alert} /> : null,
                 batteryView: flash && snapshot.power ? <BatteryView kind={flash} power={snapshot.power} /> : null,
                 volumeView: <VolumeView level={vol.level} muted={vol.muted} onToggleMute={vol.toggleMute} compact />,
+                screenshotView: screenshot ? <ScreenshotView shot={screenshot} /> : null,
                 artColor,
                 launcherMedia,
                 recentApps,
@@ -223,6 +254,27 @@ export function Island() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Mic / camera in use: a dot left of the island; hover for which app. */}
+        <AnimatePresence onExitComplete={reportHitRect}>
+          {privacyActive && (
+            <motion.div
+              ref={privacyRef}
+              key="privacy"
+              className="privacy"
+              style={{ right: `calc(100% + ${BUBBLE_GAP}px)` }}
+              initial={{ opacity: 0, scale: 0.3, x: BUBBLE_SIZE }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.3, x: BUBBLE_SIZE }}
+              transition={islandSpring}
+              onUpdate={reportHitRect}
+              onAnimationComplete={reportHitRect}
+            >
+              <span className="privacy-dot" style={{ background: privacyColor, color: privacyColor }} />
+              <span className="privacy-label">{privacyLabel(snapshot.privacy)}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -232,6 +284,7 @@ interface ViewOptions {
   alertView: ReactNode;
   batteryView: ReactNode;
   volumeView: ReactNode;
+  screenshotView: ReactNode;
   artColor: string;
   launcherMedia?: MediaState;
   recentApps: RecentApp[];
@@ -248,6 +301,7 @@ function renderView(view: View, primary: Activity | null, o: ViewOptions) {
   if (view === 'alert') return o.alertView;
   if (view === 'battery') return o.batteryView;
   if (view === 'volume') return o.volumeView;
+  if (view === 'screenshot') return o.screenshotView;
   if (view === 'launcher' || view === 'launcher-media') {
     return (
       <LauncherView

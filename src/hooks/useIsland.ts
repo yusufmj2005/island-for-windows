@@ -1,7 +1,14 @@
-import { useEffect, useState } from 'react';
-import type { IslandAlert, IslandSnapshot, RecentApp } from '../shared/types';
+import { useCallback, useEffect, useState } from 'react';
+import type { IslandAlert, IslandSnapshot, RecentApp, ScreenshotPreview } from '../shared/types';
 
-const EMPTY: IslandSnapshot = { media: { active: false }, timers: [], volume: null, power: null, hideWhenIdle: false };
+const EMPTY: IslandSnapshot = {
+  media: { active: false },
+  timers: [],
+  privacy: { mic: [], camera: [] },
+  volume: null,
+  power: null,
+  hideWhenIdle: false,
+};
 const ALERT_MS = 4500;
 
 /** Live state pushed from the main process. */
@@ -10,6 +17,7 @@ export function useIsland() {
   const [pointerInside, setPointerInside] = useState(false);
   const [alert, setAlert] = useState<IslandAlert | null>(null);
   const [recentApps, setRecentApps] = useState<RecentApp[]>([]);
+  const [screenshot, setScreenshot] = useState<ScreenshotPreview | null>(null);
 
   useEffect(() => {
     window.island.getSnapshot().then(setSnapshot);
@@ -19,6 +27,7 @@ export function useIsland() {
       window.island.onPointer(setPointerInside),
       window.island.onAlert(setAlert),
       window.island.onRecentApps(setRecentApps),
+      window.island.onScreenshot(setScreenshot),
     ];
     return () => offs.forEach((off) => off());
   }, []);
@@ -29,5 +38,15 @@ export function useIsland() {
     return () => clearTimeout(id);
   }, [alert]);
 
-  return { snapshot, pointerInside, alert, recentApps, dismissAlert: () => setAlert(null) };
+  const dismissScreenshot = useCallback(() => setScreenshot(null), []);
+
+  return {
+    snapshot,
+    pointerInside,
+    alert,
+    recentApps,
+    screenshot,
+    dismissAlert: () => setAlert(null),
+    dismissScreenshot,
+  };
 }

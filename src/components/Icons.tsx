@@ -104,7 +104,19 @@ export const BatteryIcon = ({ percent, color, charging }: { percent: number; col
   );
 };
 
-export const ChevronRightIcon =({ size = 14, color = 'currentColor' }: P) => (
+export const DownloadIcon = ({ size = 14, color = 'currentColor' }: P) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 4v11M7 10.5l5 5 5-5M5 20h14" />
+  </svg>
+);
+
+export const FolderIcon = ({ size = 14, color = 'currentColor' }: P) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinejoin="round">
+    <path d="M3.5 6.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z" />
+  </svg>
+);
+
+export const ChevronRightIcon = ({ size = 14, color = 'currentColor' }: P) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 5l7 7-7 7" />
   </svg>

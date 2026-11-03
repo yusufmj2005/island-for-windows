@@ -10,6 +10,8 @@ export interface Settings {
   /** Distance of the window from the top of the screen. */
   offsetY: number;
   openAtLogin: boolean;
+  /** Show a thumbnail when a screenshot (or any image) is copied to the clipboard. */
+  showScreenshots: boolean;
   /** Fade the island away after 10 s with nothing happening; it returns on activity or hover. */
   hideWhenIdle: boolean;
   /** Hide while a fullscreen app or game is in front. */
@@ -23,7 +25,14 @@ export interface StoredState {
 }
 
 const DEFAULTS: StoredState = {
-  settings: { offsetX: 0, offsetY: 0, openAtLogin: false, hideWhenIdle: true, autoHideFullscreen: true },
+  settings: {
+    offsetX: 0,
+    offsetY: 0,
+    openAtLogin: false,
+    showScreenshots: true,
+    hideWhenIdle: true,
+    autoHideFullscreen: true,
+  },
   timers: [],
   recentApps: [],
 };
