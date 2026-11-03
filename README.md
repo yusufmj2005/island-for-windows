@@ -39,7 +39,7 @@ To close Island: the tray icon's menu → **Quit Island**, or click the idle isl
 | Music playing | Album art + waveform tinted from the artwork; click for title, progress and controls |
 | Timer | Countdown ring + time; click for pause, cancel, +1 min |
 | Two activities | The second one splits off into a bubble; click it to swap |
-| Volume | Scroll on the island to change the system volume (2% per notch); a volume bar shows on the closed island, or a chip over the open one. Click the speaker or **middle-click** the island to mute |
+| Volume | Scroll on the island to change the system volume (2% per notch); a volume bar shows on the closed island, or a chip over the open one. Changes made with the keyboard volume keys or Windows' slider show the same bar, live. Click the speaker or **middle-click** the island to mute |
 | Mic / camera in use | A small dot left of the island while an app records from the microphone (orange) or camera (green); hover it for which app. The island never auto-hides while it shows |
 | Screenshot preview | Copying a screenshot (Win+Shift+S, Print Screen) shows a thumbnail: **drag** it into any app, or **Save** it to Pictures › Screenshots. Turn off in the right-click menu |
 | Battery (laptops) | Plugging in the charger briefly shows **Charging 48%** with a green battery; dropping to 20% or 10% on battery shows a red **Low Battery** warning. Desktops without a battery never show it |

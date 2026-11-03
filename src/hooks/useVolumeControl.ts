@@ -3,41 +3,50 @@ import type { VolumeState } from '../shared/types';
 
 /** Volume change per mouse-wheel notch (deltaY of 100), in percent. */
 const PERCENT_PER_NOTCH = 2;
-/** How long the volume bar stays after the last scroll or mute. */
+/** How long the volume bar stays after the last change. */
 const SHOW_MS = 1500;
-/** After a local change, ignore reports from Windows this long so the bar doesn't jump back. */
+/** After scrolling on the island, ignore Windows' reports this long so the bar doesn't jump back. */
 const SETTLE_MS = 600;
 
 /**
- * Scroll-to-change-volume. The shown level updates instantly on scroll; Windows'
- * reports take over again once scrolling stops. Precision touchpads send small deltas,
- * which accumulate until they add up to a whole percent.
+ * Volume on the island, kept in step with Windows both ways:
+ * - scrolling on the island changes the system volume, shown instantly;
+ * - changes made elsewhere (keyboard volume keys, Windows' slider, other apps) bring up
+ *   the same bar and follow it live.
+ * Precision touchpads send small deltas, which accumulate until they add up to a percent.
  */
 export function useVolumeControl(system: VolumeState | null) {
   const [level, setLevel] = useState(system?.level ?? 0);
   const [muted, setMuted] = useState(system?.muted ?? false);
   const [showing, setShowing] = useState(false);
   const lastLocal = useRef(0);
+  const known = useRef<VolumeState | null>(null);
   const carry = useRef(0);
   const hideTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  useEffect(() => {
-    if (!system || Date.now() - lastLocal.current < SETTLE_MS) return;
-    setLevel(system.level);
-    setMuted(system.muted);
-  }, [system]);
-
-  useEffect(() => () => clearTimeout(hideTimer.current), []);
-
   const show = () => {
-    lastLocal.current = Date.now();
     setShowing(true);
     clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => setShowing(false), SHOW_MS);
   };
 
+  useEffect(() => {
+    const before = known.current;
+    known.current = system;
+    if (!system) return;
+    // Our own scroll is still settling: Windows is just echoing it back.
+    if (Date.now() - lastLocal.current < SETTLE_MS) return;
+    setLevel(system.level);
+    setMuted(system.muted);
+    // Changed outside Island: show it. Not for the first report after startup.
+    if (before && (before.level !== system.level || before.muted !== system.muted)) show();
+  }, [system]);
+
+  useEffect(() => () => clearTimeout(hideTimer.current), []);
+
   const onWheel = (e: WheelEvent) => {
     if (!system) return;
+    lastLocal.current = Date.now();
     carry.current += (-e.deltaY / 100) * PERCENT_PER_NOTCH;
     const step = Math.trunc(carry.current);
     carry.current -= step;
@@ -52,6 +61,7 @@ export function useVolumeControl(system: VolumeState | null) {
 
   const toggleMute = () => {
     if (!system) return;
+    lastLocal.current = Date.now();
     setMuted(!muted);
     window.island.volume({ type: 'toggle-mute' });
     show();

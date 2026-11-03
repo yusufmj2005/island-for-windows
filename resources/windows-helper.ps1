@@ -84,7 +84,9 @@ Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public static class Volume {
-  [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorCom { }
+  // Created from its CLSID rather than a [ComImport] class: two classes for the same COM
+  // object (Volume and Privacy each need one) make .NET fail casts between them.
+  static readonly Type DeviceEnumeratorType = Type.GetTypeFromCLSID(new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E"));
 
   [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IMMDeviceEnumerator {
@@ -100,8 +102,8 @@ public static class Volume {
   // Methods must stay in vtable order, including the ones that aren't called.
   [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IAudioEndpointVolume {
-    [PreserveSig] int RegisterControlChangeNotify(IntPtr notify);
-    [PreserveSig] int UnregisterControlChangeNotify(IntPtr notify);
+    [PreserveSig] int RegisterControlChangeNotify(IAudioEndpointVolumeCallback notify);
+    [PreserveSig] int UnregisterControlChangeNotify(IAudioEndpointVolumeCallback notify);
     [PreserveSig] int GetChannelCount(out uint count);
     [PreserveSig] int SetMasterVolumeLevel(float db, ref Guid ctx);
     [PreserveSig] int SetMasterVolumeLevelScalar(float level, ref Guid ctx);
@@ -117,7 +119,7 @@ public static class Volume {
 
   // Looked up on every call, so switching to headphones etc. is picked up automatically.
   static IAudioEndpointVolume Endpoint() {
-    var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+    var enumerator = (IMMDeviceEnumerator)Activator.CreateInstance(DeviceEnumeratorType);
     try {
       IMMDevice device;
       if (enumerator.GetDefaultAudioEndpoint(0, 1, out device) != 0 || device == null) return null; // eRender, eMultimedia
@@ -133,12 +135,72 @@ public static class Volume {
   public static string Get() {
     var v = Endpoint();
     if (v == null) return null;
-    try {
-      float level; bool muted;
-      v.GetMasterVolumeLevelScalar(out level);
-      v.GetMute(out muted);
-      return (int)Math.Round(level * 100) + "|" + (muted ? "1" : "0");
-    } finally { Marshal.ReleaseComObject(v); }
+    try { return Read(v); } finally { Marshal.ReleaseComObject(v); }
+  }
+
+  static string Read(IAudioEndpointVolume v) {
+    float level; bool muted;
+    v.GetMasterVolumeLevelScalar(out level);
+    v.GetMute(out muted);
+    return (int)Math.Round(level * 100) + "|" + (muted ? "1" : "0");
+  }
+
+  // Windows calls OnNotify whenever the volume or mute changes, from any source (keyboard
+  // keys, the Windows slider, other apps). All of this runs on a background MTA thread:
+  // on the script's own STA thread, audio objects stop updating and notifications never
+  // arrive, because that thread doesn't pump COM messages.
+  [ComVisible(true), Guid("657804FA-D6AD-4496-8A60-352752AF4F89"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IAudioEndpointVolumeCallback {
+    [PreserveSig] int OnNotify(IntPtr data);
+  }
+
+  [ComVisible(true)]
+  class Listener : IAudioEndpointVolumeCallback {
+    public int OnNotify(IntPtr data) {
+      // AUDIO_VOLUME_NOTIFICATION_DATA: GUID context (16 bytes), BOOL bMuted, float fMasterVolume
+      int muted = Marshal.ReadInt32(data, 16);
+      float level = BitConverter.ToSingle(BitConverter.GetBytes(Marshal.ReadInt32(data, 20)), 0);
+      latest = (int)Math.Round(level * 100) + "|" + (muted != 0 ? "1" : "0");
+      return 0;
+    }
+  }
+
+  static volatile string latest;
+  static readonly Listener listener = new Listener();
+  static System.Threading.Thread watcher;
+
+  /**
+   * The current "percent|muted", kept up to date by Windows' notifications; just a field
+   * read, so it's fine to call every 100 ms. The first call starts the watcher thread.
+   */
+  public static string Poll() {
+    if (watcher == null) {
+      watcher = new System.Threading.Thread(Watch) { IsBackground = true, Name = "volume-watcher" };
+      watcher.SetApartmentState(System.Threading.ApartmentState.MTA);
+      watcher.Start();
+      latest = Get(); // until the watcher has its first reading
+    }
+    return latest;
+  }
+
+  // Every 2 s: re-register on the current default device (so a switch to headphones is
+  // followed) and take one fresh reading as a safety net for a missed notification.
+  static void Watch() {
+    IAudioEndpointVolume watched = null;
+    while (true) {
+      try {
+        if (watched != null) {
+          watched.UnregisterControlChangeNotify(listener);
+          Marshal.ReleaseComObject(watched);
+        }
+        watched = Endpoint();
+        if (watched != null) {
+          latest = Read(watched);
+          watched.RegisterControlChangeNotify(listener);
+        }
+      } catch { watched = null; }
+      System.Threading.Thread.Sleep(2000);
+    }
   }
 
   /** Sets the volume in percent; turning it up from mute unmutes, like the volume keys do. */
@@ -200,7 +262,9 @@ public static class Privacy {
   }
 
   // --- Microphone: active capture sessions, straight from the audio engine. ---
-  [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorCom { }
+  // Created from its CLSID rather than a [ComImport] class: two classes for the same COM
+  // object (Volume and Privacy each need one) make .NET fail casts between them.
+  static readonly Type DeviceEnumeratorType = Type.GetTypeFromCLSID(new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E"));
 
   [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IMMDeviceEnumerator {
@@ -259,7 +323,7 @@ public static class Privacy {
   public static List<DeviceUser> MicrophoneUsers() {
     var list = new List<DeviceUser>();
     var seen = new HashSet<uint>();
-    var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+    var enumerator = (IMMDeviceEnumerator)Activator.CreateInstance(DeviceEnumeratorType);
     IMMDeviceCollection devices;
     if (enumerator.EnumAudioEndpoints(1, 1, out devices) != 0) return list; // eCapture, DEVICE_STATE_ACTIVE
     uint count; devices.GetCount(out count);
@@ -528,7 +592,7 @@ $lastClip = [Clip]::GetClipboardSequenceNumber()   # only report changes after s
 
 function Check-Volume {
     try {
-        $v = [Volume]::Get()
+        $v = [Volume]::Poll()
         if ($v -and $v -ne $script:lastVolume) {
             $script:lastVolume = $v
             $p = $v.Split('|')
@@ -587,7 +651,6 @@ while ($true) {
                 Emit @{ type = 'fullscreen'; value = $fs }
             }
         } catch { }
-        Check-Volume   # catches changes made elsewhere, e.g. keyboard volume keys
         try {
             $mic = @([Privacy]::InUse('microphone') | ForEach-Object { @{ path = $_.Path; family = $_.Family; name = $_.Name } })
             $cam = @([Privacy]::InUse('webcam') | ForEach-Object { @{ path = $_.Path; family = $_.Family; name = $_.Name } })
@@ -659,6 +722,10 @@ while ($true) {
             Emit @{ type = 'error'; message = "$_" }
         }
     }
+
+    # Volume changed anywhere (keyboard keys, Windows' slider, other apps): every tick, so the
+    # island's bar follows a held-down volume key live.
+    Check-Volume
 
     # Something new on the clipboard (checked every tick so screenshot previews feel instant).
     $clip = [Clip]::GetClipboardSequenceNumber()
