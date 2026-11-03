@@ -1,74 +1,202 @@
-# Island — an animated activity pill for Windows
+# Island
 
-A black, animated pill at the top centre of your screen that shows what's going on: music and timers. Hover to see it react, click to expand, right-click for options.
+**A small, animated pill at the top of your Windows screen that shows what's going on: your music, timers, volume and more.** Hover over it and it reacts, click it to open, and it gets out of the way when you don't need it.
 
-Built with Electron, React, TypeScript and Framer Motion. v0.1.
+<p align="center">
+  <img src="docs/images/player.png" alt="Island showing the music player" width="460">
+</p>
 
-## Run it
+<p align="center">
+  <a href="https://github.com/yusufmj2005/island-for-windows/releases/latest"><b>⬇ Download the latest version</b></a>
+  &nbsp;·&nbsp; Windows 10 and 11 &nbsp;·&nbsp; Free
+</p>
+
+---
+
+## Install
+
+1. Go to the [latest release](https://github.com/yusufmj2005/island-for-windows/releases/latest) and download **Island-Setup-x.y.z.exe**.
+2. Run it. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. (This appears because the installer isn't code-signed yet, not because something is wrong.)
+3. Follow the steps. No administrator rights needed. Island starts right away and adds shortcuts to your Desktop and Start menu.
+
+**Updating:** download the newer installer and run it over the old one. Your settings are kept.
+
+---
+
+## The basics
+
+- **Island lives at the top centre of your screen**, below where a laptop's webcam usually is.
+- **Hover** over it and it grows slightly. **Click** it to open it.
+- **It closes by itself** when you move your mouse away.
+- **Right-click** it for settings (see [Settings](#settings)).
+- **To quit:** click the island, then **Quit** (click twice to confirm), or right-click the Island icon in the taskbar's system tray, then **Quit Island**.
+
+Island never takes focus away from the app you're using, so you can click it while typing or gaming.
+
+---
+
+## What it can do
+
+### 🎵 Music
+
+<img src="docs/images/player-compact.png" alt="Compact music pill" width="460">
+
+When Spotify, a browser or any other media app is playing, the island shows the album art and a moving waveform. **Click it** for the full player:
+
+- **Play / pause, next, previous.**
+- **Click or drag the progress bar** to jump to any point in the song (where the app allows it).
+- **Click the album art** to bring the music app to the front.
+- **Several apps playing?** A chip under the artist (e.g. *Spotify · 2 apps*) lets you choose which one the island controls.
+
+### ⏱ Timers
+
+<img src="docs/images/timer-setup.png" alt="Timer setup" width="460">
+
+Click the island, then **Timer**. Pick a duration with **−** / **+**, scroll over the time, or tap a preset. Then press **Start**.
+
+<img src="docs/images/timer-compact.png" alt="Timer counting down" width="460">
+
+The countdown stays on the island. Click it to **pause**, **cancel** or add **+1 min**. When the timer ends you'll hear a chime.
+
+### 🔊 Volume
+
+<img src="docs/images/volume.png" alt="Volume bar" width="460">
+
+**Scroll on the island** to change the volume. The bar also appears when you use your keyboard's volume keys or Windows' volume slider. **Middle-click** the island (press the scroll wheel) to mute or unmute.
+
+### 🎙 Microphone and camera indicator
+
+<img src="docs/images/mic-dot.png" alt="Microphone in use" width="460">
+
+A small dot appears next to the island while an app is using your **microphone (orange)** or **camera (green)**. Hover over it to see which app.
+
+### 📸 Screenshot preview
+
+Take a screenshot (**Win+Shift+S** or **Print Screen**) and a thumbnail pops up on the island. **Drag it** straight into Discord, WhatsApp, an email or a folder, or click **Save** to put it in *Pictures › Screenshots*.
+
+### 🚀 Recent apps
+
+Click the island to see your recently used apps. **Click one to open it.** Right-click an app to **pin** it to the front or **remove** it from the list.
+
+### 🔋 Battery (laptops)
+
+<img src="docs/images/charging.png" alt="Charging indicator" width="460">
+
+Plug in your charger and the island shows your battery level for a moment. It also warns you when the battery drops to 20% and 10%. Desktop PCs without a battery never show this.
+
+### Two things at once
+
+If music is playing and a timer is running, the second one appears as a small bubble beside the island. Click the bubble to switch which one is shown.
+
+---
+
+## Tips and shortcuts
+
+| Do this | To |
+|---|---|
+| **Click** the island | Open it |
+| **Scroll** on the island | Change the volume |
+| **Middle-click** the island | Mute / unmute |
+| **Right-click** the island | Open settings |
+| **Ctrl + Alt + Space** | Hide or show the island instantly (handy before screen-sharing). If another app already uses it, Island uses **Ctrl + Alt + I** instead. The right-click menu shows which. |
+| Move the mouse to the top centre | Bring the island back after it has faded away |
+
+Island fades away after **10 seconds** with nothing happening, and hides itself while a **fullscreen** game or video is in front. Your timers and music keep going in the background.
+
+---
+
+## Settings
+
+Right-click the island (or the Island icon in the system tray):
+
+| Setting | What it does |
+|---|---|
+| **Hide island** | Hides it until you choose *Show island* or press the shortcut |
+| **Start 5 min timer** | A quick timer without opening the island |
+| **Position** | Nudge the island left or right, or lower it, if your webcam isn't exactly in the middle. *Reset position* puts it back |
+| **Show screenshot previews** | Turn screenshot thumbnails on or off |
+| **Hide when idle (10 s)** | Turn the auto-fade on or off |
+| **Hide in fullscreen apps** | Turn auto-hiding for fullscreen games and videos on or off |
+| **Open at login** | Start Island automatically when you sign in to Windows |
+| **Open diagnostics log** | A log file that helps when reporting a problem |
+| **Quit Island** | Close it |
+
+---
+
+## Privacy
+
+Everything stays on your PC. Island has no account, sends no data anywhere and doesn't track you. Your recent apps list, timers and settings are stored only in `%APPDATA%\Island`.
+
+---
+
+## Troubleshooting
+
+**Windows says "Windows protected your PC" when installing.**
+Click **More info → Run anyway**. This happens because the installer isn't code-signed yet.
+
+**The island doesn't show my music.**
+Island shows apps that use Windows' media controls (Spotify, Chrome, Edge, Firefox and most media apps). Make sure something is playing. Paused music disappears from the island after a minute.
+
+**I can't drag the progress bar.**
+Some apps don't allow jumping within a track. The bar only becomes draggable when the app supports it.
+
+**The camera dot never appears.**
+Some recent Windows versions no longer report camera use in a way Island can read. The microphone dot works on all versions.
+
+**The island disappeared.**
+It fades after 10 seconds of nothing happening. Move your mouse to the top centre of the screen to bring it back. If you pressed the hide shortcut, press it again. If a fullscreen app is open, it comes back when you leave it.
+
+**The island is in the wrong place.**
+Right-click it, then **Position**. If you have several monitors, Island currently appears on your main display only.
+
+**Something else isn't working.**
+Right-click the island, then **Open diagnostics log**, and include the log when you [report the problem](https://github.com/yusufmj2005/island-for-windows/issues).
+
+---
+
+## Uninstall
+
+Open **Settings → Apps → Installed apps**, find **Island**, and choose **Uninstall**.
+
+---
+
+## Known limitations
+
+- Shows on your **main display only**.
+- **Camera** detection doesn't work on some recent Windows builds (the microphone does).
+- Not code-signed yet, so you'll see the SmartScreen prompt on first install.
+
+---
+
+## For developers
+
+Island is built with Electron, React, TypeScript and Framer Motion. A small Windows PowerShell helper (`resources/windows-helper.ps1`) talks to Windows for media sessions, volume, the battery, the microphone, fullscreen detection and recent apps.
 
 ```bash
 npm install
-npm start          # build, then launch
-npm run dev        # hot-reloading dev mode
+npm run dev        # run with hot reload
+npm start          # build and run
 npm run typecheck
+npm run dist       # build the installer into release/
 ```
 
-Requires Windows 10/11 and Node 22+. No .NET SDK or admin rights needed.
+Requires Windows 10/11 and Node 22+.
 
-**Installer:** `npm run dist` builds `release/Island Setup 0.1.0.exe`, a per-user installer (no admin rights) with Desktop and Start menu shortcuts and an uninstaller. It isn't code-signed, so Windows SmartScreen asks for confirmation the first time ("More info" → "Run anyway").
-
-To get **Island** shortcuts on the Desktop and in the Start menu (after `npm run build`):
-
-```bash
-powershell -ExecutionPolicy Bypass -File scripts/create-shortcuts.ps1
-```
-
-The shortcuts run the last build, so run `npm run build` after changing code. Re-run the script if you move the project folder.
-
-To close Island: the tray icon's menu → **Quit Island**, or click the idle island → **Quit** (twice).
-
-## What it does
-
-| State | What you see |
-| --- | --- |
-| Idle | A small pill that grows slightly on hover. After 10 s with nothing happening it fades away; it returns when music or a timer starts, or when you move the cursor to the top centre (right-click → **Hide when idle (10 s)** to turn this off) |
-| Click (idle) | Launcher: mini player for paused music, a **Timer** button, **Recent apps** and Quit |
-| Recent apps | The apps you last brought to the front, newest first; click an icon to open the app. Right-click an icon to **pin** it to the front (blue dot) or **remove** it. The list stays on this PC (`island-state.json`) |
-| Timer button | Setup panel: pick a duration with − / + (or scroll), presets from 1 min to 1 hr, then **Start** |
-| Grid button (any expanded view) | Opens the launcher on top of the current activity; **Back** returns to it |
-| Music playing | Album art + waveform tinted from the artwork; click for title, progress and controls. **Click or drag the progress bar** to seek (where the player supports it), **click the album art** to bring the player app to the front, and when several apps play media, the **source chip** under the artist lets you pick which one the island controls |
-| Timer | Countdown ring + time; click for pause, cancel, +1 min |
-| Two activities | The second one splits off into a bubble; click it to swap |
-| Volume | Scroll on the island to change the system volume (2% per notch); a volume bar shows on the closed island, or a chip over the open one. Changes made with the keyboard volume keys or Windows' slider show the same bar, live. Click the speaker or **middle-click** the island to mute |
-| Mic / camera in use | A small dot left of the island while an app records from the microphone (orange) or camera (green); hover it for which app. The island never auto-hides while it shows |
-| Screenshot preview | Copying a screenshot (Win+Shift+S, Print Screen) shows a thumbnail: **drag** it into any app, or **Save** it to Pictures › Screenshots. Turn off in the right-click menu |
-| Battery (laptops) | Plugging in the charger briefly shows **Charging 48%** with a green battery; dropping to 20% or 10% on battery shows a red **Low Battery** warning. Desktops without a battery never show it |
-| Timer finished | Alert with a chime, then "Done" until dismissed (auto-clears after a minute) |
-
-Right-click the island for a quick 5 min timer, position nudges (for off-centre webcams), hide-when-idle, hide-in-fullscreen, open-at-login and Quit.
-
-**Ctrl+Alt+Space** hides or restores the island instantly (timers and music keep running). If another app owns that shortcut, Island falls back to Ctrl+Alt+I, then Ctrl+Shift+Alt+H; the right-click menu shows which one is active. It also hides itself while a fullscreen app or game is in front.
-
-## How it works
-
-- **One fixed transparent window** (460×260, always on top). The pill morphs *inside* it; the window never resizes, which avoids flicker.
-- **Click-through**: the window ignores the mouse except over the pill. The main process polls the cursor every 40 ms against the pill's area (reported by the renderer), so a missed mouse event can never leave it blocking clicks.
-- **Music** comes from the Windows media session API (GSMTC) via `resources/windows-helper.ps1`, a Windows PowerShell 5.1 script (which also detects fullscreen apps) that streams JSON lines. It's behind a `MediaProvider` interface so it can be swapped for a native helper later. Works with apps that integrate with Windows media controls (Spotify, most browsers, etc.).
-- **Timers** are wall-clock timestamps owned by the main process, re-checked after sleep and persisted to `%APPDATA%\Island\island-state.json`.
+<details>
+<summary>Project layout</summary>
 
 ```
-electron/main/        main process: window, click-through, IPC validation
-  TimerService.ts     timers
-  WindowsHelper.ts    runs the PowerShell helper (MediaProvider + fullscreen)
-  media/              MediaProvider interface, MediaService
-electron/preload/     typed, minimal bridge (contextIsolation, sandbox)
-src/                  React UI
-  activities.ts       ranking, view selection, shapes
-  components/Island   the morphing pill and bubble
-  views/              compact/expanded views per activity
-resources/windows-helper.ps1   media session + fullscreen detection
+electron/main/          Electron main process: the window, click-through, menus, IPC
+  TimerService.ts       timers
+  RecentAppsService.ts  recent apps (matched to Start menu entries)
+  ScreenshotService.ts  screenshot previews
+  WindowsHelper.ts      runs the PowerShell helper
+  media/                media session state
+electron/preload/       the small, typed bridge to the UI
+src/                    React UI
+  components/Island.tsx the morphing pill and its views
+  views/                music, timer, launcher and other views
+resources/              the PowerShell helper and icons
 ```
 
-## Not in v0.1 yet
-
-Multi-monitor choice, downloads, notifications, brightness, calendar, weather/sports, plugins. Camera detection relies on a Windows usage log that some recent Windows builds no longer write; the microphone uses the audio engine directly and works everywhere.
+</details>
