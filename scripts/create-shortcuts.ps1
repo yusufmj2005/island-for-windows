@@ -19,7 +19,7 @@ foreach ($path in $targets) {
     $lnk.Arguments = "`"$root`""
     $lnk.WorkingDirectory = $root
     $lnk.IconLocation = "$icon,0"
-    $lnk.Description = 'Island - a Dynamic Island-style pill for Windows'
+    $lnk.Description = 'Island - an animated activity pill for Windows'
     $lnk.Save()
     "Created $path"
 }

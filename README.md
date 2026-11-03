@@ -1,4 +1,4 @@
-# Island — a Dynamic Island-style pill for Windows
+# Island — an animated activity pill for Windows
 
 A black, animated pill at the top centre of your screen that shows what's going on: music and timers. Hover to see it react, click to expand, right-click for options.
 

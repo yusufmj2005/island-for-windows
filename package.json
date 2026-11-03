@@ -1,8 +1,8 @@
 {
-  "name": "dynamic-island-for-windows",
+  "name": "island-for-windows",
   "productName": "Island",
   "version": "0.1.0",
-  "description": "A Dynamic Island-style activity pill for Windows",
+  "description": "An animated activity pill for the top of your Windows screen",
   "author": "Yusuf",
   "main": "dist-electron/main.js",
   "private": true,
