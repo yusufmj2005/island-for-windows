@@ -37,8 +37,6 @@ const BUBBLE_GAP = 6;
 const HIT_PADDING = 6;
 /** The pill's top edge inside the window (the stage's top padding in styles.css). */
 const STAGE_TOP = 6;
-/** With nothing happening, the island fades away after this long. */
-const IDLE_HIDE_MS = 10_000;
 /** Where the cursor brings a hidden island back: a band at the top centre of the screen. */
 const WAKE_ZONE = { width: 240, height: 44 };
 /** How long a screenshot preview stays after the cursor leaves it. */
@@ -96,7 +94,7 @@ export function Island() {
   const privacyActive = mic.length + camera.length > 0;
   const privacyColor = camera.length > 0 ? PRIVACY_CAMERA : PRIVACY_MIC;
   // Never hide while the mic or camera is in use: that dot is the point.
-  const hidden = useIdleHidden(snapshot.hideWhenIdle && view === 'idle' && !privacyActive);
+  const hidden = useIdleHidden(snapshot.hideWhenIdle && view === 'idle' && !privacyActive, snapshot.idleHideSeconds * 1000);
   const hiddenRef = useRef(hidden);
   const shapeRef = useRef(shape);
   shapeRef.current = shape;
@@ -373,17 +371,17 @@ function BubbleTimer({ timer }: { timer: TimerState }) {
   return <Ring progress={remainingMs(timer, now) / timer.durationMs} color={TIMER_COLOR} size={22} />;
 }
 
-/** True once `idle` has held for IDLE_HIDE_MS; false again the moment it stops. */
-function useIdleHidden(idle: boolean) {
+/** True once `idle` has held for `delayMs`; false again the moment it stops. */
+function useIdleHidden(idle: boolean, delayMs: number) {
   const [hidden, setHidden] = useState(false);
   useEffect(() => {
     if (!idle) {
       setHidden(false);
       return;
     }
-    const id = setTimeout(() => setHidden(true), IDLE_HIDE_MS);
+    const id = setTimeout(() => setHidden(true), delayMs);
     return () => clearTimeout(id);
-  }, [idle]);
+  }, [idle, delayMs]);
   return hidden;
 }
 

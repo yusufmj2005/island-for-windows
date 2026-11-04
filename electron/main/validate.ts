@@ -1,5 +1,13 @@
 // Validation for every payload that crosses the IPC boundary from the renderer.
-import type { HitRect, MediaAction, MediaCommand, TimerAction, VolumeCommand } from '../../src/shared/types';
+import type {
+  HitRect,
+  IslandSettings,
+  MediaAction,
+  MediaCommand,
+  SettingsAction,
+  TimerAction,
+  VolumeCommand,
+} from '../../src/shared/types';
 
 const MEDIA_COMMANDS: readonly string[] = ['toggle', 'play', 'pause', 'next', 'prev'];
 const MAX_TIMER_MS = 24 * 60 * 60 * 1000;
@@ -11,6 +19,26 @@ const isNum = (v: unknown, min: number, max: number): v is number =>
 
 export function parseMediaCommand(v: unknown): MediaCommand | null {
   return typeof v === 'string' && MEDIA_COMMANDS.includes(v) ? (v as MediaCommand) : null;
+}
+
+const SETTINGS_ACTIONS: readonly string[] = ['open-log', 'open-repo', 'clear-recent-apps', 'quit'];
+export const IDLE_HIDE_CHOICES: readonly number[] = [5, 10, 30, 60];
+
+export function parseSettingsAction(v: unknown): SettingsAction | null {
+  return typeof v === 'string' && SETTINGS_ACTIONS.includes(v) ? (v as SettingsAction) : null;
+}
+
+/** Keeps only known settings with valid values; anything else in the patch is dropped. */
+export function parseSettingsPatch(v: unknown): Partial<IslandSettings> | null {
+  if (!isObj(v)) return null;
+  const patch: Partial<IslandSettings> = {};
+  if (isNum(v.offsetX, -800, 800)) patch.offsetX = Math.round(v.offsetX);
+  if (isNum(v.offsetY, 0, 40)) patch.offsetY = Math.round(v.offsetY);
+  if (typeof v.idleHideSeconds === 'number' && IDLE_HIDE_CHOICES.includes(v.idleHideSeconds)) patch.idleHideSeconds = v.idleHideSeconds;
+  for (const key of ['openAtLogin', 'showScreenshots', 'hideWhenIdle', 'autoHideFullscreen'] as const) {
+    if (typeof v[key] === 'boolean') patch[key] = v[key];
+  }
+  return patch;
 }
 
 export function parseMediaAction(v: unknown): MediaAction | null {

@@ -125,6 +125,12 @@ export class RecentAppsService extends EventEmitter<{ change: [] }> {
     this.commit();
   }
 
+  /** Empties the list except for pinned apps. */
+  clearUnpinned() {
+    this.apps = this.apps.filter((a) => a.pinnedAt != null);
+    this.commit();
+  }
+
   /** Drops an app from the list; it comes back only if you use it again. */
   remove(id: string) {
     this.apps = this.apps.filter((a) => a.id !== id);

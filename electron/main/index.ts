@@ -5,13 +5,23 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   powerMonitor,
   screen,
   shell,
   Tray,
 } from 'electron';
 import path from 'node:path';
-import type { HitRect, IslandSnapshot, MediaState, PowerState, PrivacyState, VolumeState } from '../../src/shared/types';
+import type {
+  HitRect,
+  IslandSettings,
+  IslandSnapshot,
+  MediaState,
+  PowerState,
+  PrivacyState,
+  SettingsInfo,
+  VolumeState,
+} from '../../src/shared/types';
 import { installFileLog } from './log';
 import { RecentAppsService } from './RecentAppsService';
 import { ScreenshotService } from './ScreenshotService';
@@ -19,7 +29,15 @@ import { Store } from './Store';
 import { TimerService } from './TimerService';
 import { WindowsHelper } from './WindowsHelper';
 import { MediaService } from './media/MediaService';
-import { parseHitRect, parseMediaAction, parseMediaCommand, parseTimerAction, parseVolumeCommand } from './validate';
+import {
+  parseHitRect,
+  parseMediaAction,
+  parseMediaCommand,
+  parseSettingsAction,
+  parseSettingsPatch,
+  parseTimerAction,
+  parseVolumeCommand,
+} from './validate';
 
 // The window is a fixed transparent canvas big enough for the largest island state.
 // The island morphs inside it; the window itself never resizes.
@@ -31,6 +49,7 @@ const POINTER_POLL_MS = 40;
 const RAISE_EVERY_MS = 3000;
 /** Hides or restores the island instantly, e.g. before screen sharing. The first free one wins. */
 const HIDE_SHORTCUTS = ['Control+Alt+Space', 'Control+Alt+I', 'Control+Shift+Alt+H'];
+const REPO_URL = 'https://github.com/yusufmj2005/island-for-windows';
 /** Fullscreen must hold this long before the island hides or returns, to avoid flicker while switching apps. */
 const FULLSCREEN_DEBOUNCE_MS = 400;
 
@@ -54,6 +73,7 @@ let manuallyHidden = false;
 let fullscreenInFront = false;
 let hideShortcut: string | undefined;
 let tray: Tray | null = null;
+let settingsWin: BrowserWindow | null = null;
 
 /** Shows or hides the window. Hiding never stops timers or the media helper. */
 function applyVisibility() {
@@ -81,6 +101,7 @@ function snapshot(): IslandSnapshot {
     volume,
     power,
     hideWhenIdle: store.get().settings.hideWhenIdle,
+    idleHideSeconds: store.get().settings.idleHideSeconds,
   };
 }
 
@@ -259,11 +280,6 @@ function showMenu() {
 }
 
 function buildMenu() {
-  const settings = store.get().settings;
-  const nudge = (dx: number) => {
-    store.updateSettings({ offsetX: store.get().settings.offsetX + dx });
-    positionWindow();
-  };
   return Menu.buildFromTemplate([
     {
       label: manuallyHidden ? 'Show island' : 'Hide island',
@@ -271,72 +287,74 @@ function buildMenu() {
       registerAccelerator: false,
       click: toggleHidden,
     },
-    { type: 'separator' },
     { label: 'Start 5 min timer', click: () => timers.apply({ type: 'start', durationMs: 5 * 60_000 }) },
     { type: 'separator' },
-    {
-      label: 'Position',
-      submenu: [
-        { label: 'Nudge left', click: () => nudge(-10) },
-        { label: 'Nudge right', click: () => nudge(10) },
-        {
-          label: 'Lower by 4 px',
-          click: () => {
-            store.updateSettings({ offsetY: Math.min(40, settings.offsetY + 4) });
-            positionWindow();
-          },
-        },
-        {
-          label: 'Reset position',
-          click: () => {
-            store.updateSettings({ offsetX: 0, offsetY: 0 });
-            positionWindow();
-          },
-        },
-      ],
-    },
-    {
-      label: 'Show screenshot previews',
-      type: 'checkbox',
-      checked: settings.showScreenshots,
-      click: (item) => store.updateSettings({ showScreenshots: item.checked }),
-    },
-    {
-      label: 'Hide when idle (10 s)',
-      type: 'checkbox',
-      checked: settings.hideWhenIdle,
-      click: (item) => {
-        store.updateSettings({ hideWhenIdle: item.checked });
-        broadcast();
-      },
-    },
-    {
-      label: 'Hide in fullscreen apps',
-      type: 'checkbox',
-      checked: settings.autoHideFullscreen,
-      click: (item) => {
-        store.updateSettings({ autoHideFullscreen: item.checked });
-        applyVisibility();
-      },
-    },
-    {
-      label: 'Open at login',
-      type: 'checkbox',
-      checked: settings.openAtLogin,
-      click: (item) => {
-        store.updateSettings({ openAtLogin: item.checked });
-        // Unpackaged, Electron must be told which app to run, like the shortcuts do.
-        app.setLoginItemSettings(
-          app.isPackaged
-            ? { openAtLogin: item.checked }
-            : { openAtLogin: item.checked, path: process.execPath, args: [app.getAppPath()] },
-        );
-      },
-    },
-    { type: 'separator' },
-    { label: 'Open diagnostics log', click: () => shell.openPath(logFile()) },
+    { label: 'Settings...', click: openSettings },
     { label: 'Quit Island', click: () => app.quit() },
   ]);
+}
+
+function settingsInfo(): SettingsInfo {
+  return { settings: store.get().settings, version: app.getVersion(), hideShortcut: hideShortcut ?? null };
+}
+
+/** Saves setting changes, from the settings window, and applies each one right away. */
+function applySettings(patch: Partial<IslandSettings>) {
+  store.updateSettings(patch);
+  if (patch.offsetX !== undefined || patch.offsetY !== undefined) positionWindow();
+  if (patch.autoHideFullscreen !== undefined) applyVisibility();
+  if (patch.openAtLogin !== undefined) {
+    // Unpackaged, Electron must be told which app to run, like the shortcuts do.
+    app.setLoginItemSettings(
+      app.isPackaged
+        ? { openAtLogin: patch.openAtLogin }
+        : { openAtLogin: patch.openAtLogin, path: process.execPath, args: [app.getAppPath()] },
+    );
+  }
+  broadcast();
+  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('island:settings-info', settingsInfo());
+}
+
+/** A normal window (unlike the island it takes focus), opened once and reused. */
+function openSettings() {
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    if (settingsWin.isMinimized()) settingsWin.restore();
+    settingsWin.show();
+    settingsWin.focus();
+    return;
+  }
+  settingsWin = new BrowserWindow({
+    // Tall enough for the whole page where it fits; it scrolls on smaller screens.
+    useContentSize: true,
+    width: 440,
+    height: Math.min(932, screen.getPrimaryDisplay().workArea.height - 60),
+    title: 'Island Settings',
+    icon: path.join(resourceDir(), 'island.ico'),
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    backgroundColor: '#1c1c1e',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  settingsWin.setMenu(null);
+  settingsWin.webContents.on('will-navigate', (e) => e.preventDefault());
+  settingsWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
+  const devUrl = process.env.ISLAND_DEV_URL;
+  if (devUrl) settingsWin.loadURL(`${devUrl}#settings`);
+  else settingsWin.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'settings' });
+
+  settingsWin.once('ready-to-show', () => settingsWin?.show());
+  settingsWin.on('closed', () => {
+    settingsWin = null;
+  });
 }
 
 function registerIpc() {
@@ -384,12 +402,36 @@ function registerIpc() {
   });
   ipcMain.on('island:menu', () => showMenu());
   ipcMain.on('island:quit', () => app.quit());
+  ipcMain.on('island:open-settings', () => openSettings());
+  ipcMain.handle('island:get-settings-info', () => settingsInfo());
+  ipcMain.on('island:update-settings', (_e, raw) => {
+    const patch = parseSettingsPatch(raw);
+    if (patch) applySettings(patch);
+  });
+  ipcMain.on('island:settings-action', (_e, raw) => {
+    switch (parseSettingsAction(raw)) {
+      case 'open-log':
+        shell.openPath(logFile());
+        break;
+      case 'open-repo':
+        shell.openExternal(REPO_URL);
+        break;
+      case 'clear-recent-apps':
+        recentApps.clearUnpinned();
+        break;
+      case 'quit':
+        app.quit();
+        break;
+    }
+  });
 }
 
 const logFile = () => path.join(app.getPath('userData'), 'island.log');
 
 // Matches build.appId, so Windows (taskbar, notifications) identifies the app as Island.
 app.setAppUserModelId('com.yusuf.island');
+// Dark title bar on the settings window.
+nativeTheme.themeSource = 'dark';
 
 app.whenReady().then(() => {
   installFileLog(logFile());

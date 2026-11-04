@@ -587,6 +587,12 @@ button {
   height: 14px;
 }
 
+.section-end {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .quit-chip {
   display: inline-flex;
   align-items: center;

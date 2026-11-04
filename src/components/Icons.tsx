@@ -128,6 +128,13 @@ export const ChevronRightIcon = ({ size = 14, color = 'currentColor' }: P) => (
   </svg>
 );
 
+export const GearIcon = ({ size = 14, color = 'currentColor' }: P) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3.2" />
+    <path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1" />
+  </svg>
+);
+
 export const PowerIcon = ({ size = 14, color = 'currentColor' }: P) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.6" strokeLinecap="round">
     <path d="M12 3.5v8" />

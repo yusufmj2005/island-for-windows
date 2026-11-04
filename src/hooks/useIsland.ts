@@ -8,6 +8,7 @@ const EMPTY: IslandSnapshot = {
   volume: null,
   power: null,
   hideWhenIdle: false,
+  idleHideSeconds: 10,
 };
 const ALERT_MS = 4500;
 

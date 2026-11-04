@@ -1,22 +1,10 @@
 // Small JSON store in the user's app data folder for settings, timers and recent apps.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { TimerState } from '../../src/shared/types';
+import type { IslandSettings, TimerState } from '../../src/shared/types';
 import type { StoredRecentApp } from './RecentAppsService';
 
-export interface Settings {
-  /** Horizontal nudge from the screen centre, for off-centre webcams. */
-  offsetX: number;
-  /** Distance of the window from the top of the screen. */
-  offsetY: number;
-  openAtLogin: boolean;
-  /** Show a thumbnail when a screenshot (or any image) is copied to the clipboard. */
-  showScreenshots: boolean;
-  /** Fade the island away after 10 s with nothing happening; it returns on activity or hover. */
-  hideWhenIdle: boolean;
-  /** Hide while a fullscreen app or game is in front. */
-  autoHideFullscreen: boolean;
-}
+export type Settings = IslandSettings;
 
 export interface StoredState {
   settings: Settings;
@@ -31,6 +19,7 @@ const DEFAULTS: StoredState = {
     openAtLogin: false,
     showScreenshots: true,
     hideWhenIdle: true,
+    idleHideSeconds: 10,
     autoHideFullscreen: true,
   },
   timers: [],

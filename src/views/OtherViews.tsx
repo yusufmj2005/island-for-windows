@@ -7,6 +7,7 @@ import {
   ChevronRightIcon,
   DownloadIcon,
   FolderIcon,
+  GearIcon,
   PowerIcon,
   SpeakerIcon,
   TimerIcon,
@@ -190,7 +191,19 @@ export function LauncherView({
           {onBack && <BackChip onClick={onBack} />}
           <div className="section-label">Island</div>
         </div>
-        <QuitButton />
+        <div className="section-end">
+          <button
+            className="quit-chip"
+            title="Island settings"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.island.openSettings();
+            }}
+          >
+            <GearIcon size={12} /> Settings
+          </button>
+          <QuitButton />
+        </div>
       </div>
       <button
         className="tile timer-tile"

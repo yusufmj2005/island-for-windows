@@ -1,7 +1,7 @@
 {
   "name": "island-for-windows",
   "productName": "Island",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "An animated activity pill for the top of your Windows screen",
   "author": "Yusuf",
   "main": "dist-electron/main.js",

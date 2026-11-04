@@ -28,7 +28,7 @@
 - **Island lives at the top centre of your screen**, below where a laptop's webcam usually is.
 - **Hover** over it and it grows slightly. **Click** it to open it.
 - **It closes by itself** when you move your mouse away.
-- **Right-click** it for settings (see [Settings](#settings)).
+- **Right-click** it for a quick menu and [Settings](#settings).
 - **To quit:** click the island, then **Quit** (click twice to confirm), or right-click the Island icon in the taskbar's system tray, then **Quit Island**.
 
 Island never takes focus away from the app you're using, so you can click it while typing or gaming.
@@ -97,29 +97,29 @@ If music is playing and a timer is running, the second one appears as a small bu
 | **Click** the island | Open it |
 | **Scroll** on the island | Change the volume |
 | **Middle-click** the island | Mute / unmute |
-| **Right-click** the island | Open settings |
+| **Right-click** the island | Quick menu, including Settings |
 | **Ctrl + Alt + Space** | Hide or show the island instantly (handy before screen-sharing). If another app already uses it, Island uses **Ctrl + Alt + I** instead. The right-click menu shows which. |
 | Move the mouse to the top centre | Bring the island back after it has faded away |
 
-Island fades away after **10 seconds** with nothing happening, and hides itself while a **fullscreen** game or video is in front. Your timers and music keep going in the background.
+Island fades away after **10 seconds** with nothing happening (you can change this in Settings), and hides itself while a **fullscreen** game or video is in front. Your timers and music keep going in the background.
 
 ---
 
 ## Settings
 
-Right-click the island (or the Island icon in the system tray):
+Open **Settings** by right-clicking the island (or the Island icon in the system tray), or from the island itself: click it, then **Settings**. Changes apply right away.
 
 | Setting | What it does |
 |---|---|
-| **Hide island** | Hides it until you choose *Show island* or press the shortcut |
-| **Start 5 min timer** | A quick timer without opening the island |
-| **Position** | Nudge the island left or right, or lower it, if your webcam isn't exactly in the middle. *Reset position* puts it back |
-| **Show screenshot previews** | Turn screenshot thumbnails on or off |
-| **Hide when idle (10 s)** | Turn the auto-fade on or off |
-| **Hide in fullscreen apps** | Turn auto-hiding for fullscreen games and videos on or off |
 | **Open at login** | Start Island automatically when you sign in to Windows |
-| **Open diagnostics log** | A log file that helps when reporting a problem |
-| **Quit Island** | Close it |
+| **Screenshot previews** | Turn screenshot thumbnails on or off |
+| **Hide when idle** | Fade the island away when nothing is happening, after 5, 10, 30 or 60 seconds |
+| **Hide in fullscreen apps** | Hide during fullscreen games and videos |
+| **Position** | Slide the island left, right or down, if your webcam isn't exactly in the middle |
+| **Recent apps** | Clear the list (pinned apps stay) |
+| **About** | Your version, the GitHub page, the diagnostics log, and Quit |
+
+The right-click menu also has **Hide island** and a quick **Start 5 min timer**.
 
 ---
 
@@ -144,13 +144,13 @@ Some apps don't allow jumping within a track. The bar only becomes draggable whe
 Some recent Windows versions no longer report camera use in a way Island can read. The microphone dot works on all versions.
 
 **The island disappeared.**
-It fades after 10 seconds of nothing happening. Move your mouse to the top centre of the screen to bring it back. If you pressed the hide shortcut, press it again. If a fullscreen app is open, it comes back when you leave it.
+It fades when nothing is happening. Move your mouse to the top centre of the screen to bring it back. If you pressed the hide shortcut, press it again. If a fullscreen app is open, it comes back when you leave it.
 
 **The island is in the wrong place.**
-Right-click it, then **Position**. If you have several monitors, Island currently appears on your main display only.
+Open **Settings** and use the **Position** sliders. If you have several monitors, Island currently appears on your main display only.
 
 **Something else isn't working.**
-Right-click the island, then **Open diagnostics log**, and include the log when you [report the problem](https://github.com/yusufmj2005/island-for-windows/issues).
+Open **Settings**, then **Open log**, and include the log when you [report the problem](https://github.com/yusufmj2005/island-for-windows/issues).
 
 ---
 
@@ -196,6 +196,7 @@ electron/preload/       the small, typed bridge to the UI
 src/                    React UI
   components/Island.tsx the morphing pill and its views
   views/                music, timer, launcher and other views
+  settings/             the settings window
 resources/              the PowerShell helper and icons
 ```
 

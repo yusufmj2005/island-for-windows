@@ -29,6 +29,11 @@ const api: IslandApi = {
   showAppMenu: (id) => ipcRenderer.send('island:app-menu', id),
   showMenu: () => ipcRenderer.send('island:menu'),
   quit: () => ipcRenderer.send('island:quit'),
+  openSettings: () => ipcRenderer.send('island:open-settings'),
+  getSettingsInfo: () => ipcRenderer.invoke('island:get-settings-info'),
+  onSettingsInfo: (cb) => subscribe('island:settings-info', cb),
+  updateSettings: (patch) => ipcRenderer.send('island:update-settings', patch),
+  settingsAction: (action) => ipcRenderer.send('island:settings-action', action),
 };
 
 contextBridge.exposeInMainWorld('island', api);

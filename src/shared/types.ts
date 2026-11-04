@@ -93,9 +93,36 @@ export interface IslandSnapshot {
   volume: VolumeState | null;
   /** Null until Windows has reported it. */
   power: PowerState | null;
-  /** Setting: fade the island away after 10 s with nothing happening. */
+  /** Setting: fade the island away after a while with nothing happening. */
   hideWhenIdle: boolean;
+  idleHideSeconds: number;
 }
+
+export interface IslandSettings {
+  /** Horizontal nudge from the screen centre, for off-centre webcams. */
+  offsetX: number;
+  /** Distance of the window from the top of the screen. */
+  offsetY: number;
+  openAtLogin: boolean;
+  /** Show a thumbnail when a screenshot (or any image) is copied to the clipboard. */
+  showScreenshots: boolean;
+  /** Fade the island away with nothing happening; it returns on activity or hover. */
+  hideWhenIdle: boolean;
+  /** How long "nothing happening" lasts before it fades. */
+  idleHideSeconds: number;
+  /** Hide while a fullscreen app or game is in front. */
+  autoHideFullscreen: boolean;
+}
+
+/** What the settings window shows. */
+export interface SettingsInfo {
+  settings: IslandSettings;
+  version: string;
+  /** The hide / show shortcut in use, or null if every candidate was taken. */
+  hideShortcut: string | null;
+}
+
+export type SettingsAction = 'open-log' | 'open-repo' | 'clear-recent-apps' | 'quit';
 
 /** An app in the island's "Recent apps" row. */
 export interface RecentApp {
@@ -151,4 +178,9 @@ export interface IslandApi {
   showAppMenu(id: string): void;
   showMenu(): void;
   quit(): void;
+  openSettings(): void;
+  getSettingsInfo(): Promise<SettingsInfo>;
+  onSettingsInfo(cb: (info: SettingsInfo) => void): () => void;
+  updateSettings(patch: Partial<IslandSettings>): void;
+  settingsAction(action: SettingsAction): void;
 }
